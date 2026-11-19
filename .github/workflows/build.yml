@@ -1,0 +1,46 @@
+name: Build IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["**"]
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build app (unsigned, for sideloading)
+        run: |
+          xcodebuild \
+            -project AlbumUnlock.xcodeproj \
+            -target AlbumUnlock \
+            -configuration Release \
+            -sdk iphoneos \
+            SYMROOT="$(pwd)/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=NO
+
+      - name: Package unsigned IPA
+        run: |
+          APP=$(find build -type d -name "*.app" | head -1)
+          echo "Found app bundle: $APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry AlbumUnlock.ipa Payload
+          ls -lh AlbumUnlock.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AlbumUnlock-ipa
+          path: AlbumUnlock.ipa
+          retention-days: 30
