@@ -1,0 +1,23 @@
+name: AlbumUnlock
+options:
+  bundleIdPrefix: com.shasteel.helper
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+targets:
+  AlbumUnlock:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shasteel.helper.albumunlock
+        # 可执行文件名保持 ASCII（利于 Windows 端 Sideloadly 重签）；桌面显示名用 Info.plist 的中文
+        PRODUCT_NAME: AlbumUnlock
+        INFOPLIST_FILE: Support/Info.plist
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "1.0"
