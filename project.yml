@@ -10,12 +10,14 @@ targets:
     platform: iOS
     sources:
       - Sources
+      - Assets.xcassets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.shasteel.helper.albumunlock
         # 可执行文件名保持 ASCII（利于 Windows 端 Sideloadly 重签）；桌面显示名用 Info.plist 的中文
         PRODUCT_NAME: AlbumUnlock
         INFOPLIST_FILE: Support/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
