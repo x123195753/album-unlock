@@ -298,8 +298,21 @@ final class WebCore: NSObject, ObservableObject {
         }
     }
 
-    /// 列出页面上所有 file input 状态，方便排查
-    func scanFileInputs() {
+    /// 加载失败时弹窗显示原因，便于排查
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        let alert = UIAlertController(title: "页面加载失败", message: error.localizedDescription, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "好的", style: .default))
+        UIApplication.topViewController()?.present(alert, animated: true)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        if (error as NSError).code == NSURLErrorCancelled { return }
+        let alert = UIAlertController(title: "页面加载出错", message: error.localizedDescription, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "好的", style: .default))
+        UIApplication.topViewController()?.present(alert, animated: true)
+    }
+
+    /// 列出页面上所有 file input 状态，方便排查    func scanFileInputs() {
         let js = """
         (function(){
           var out = [];
