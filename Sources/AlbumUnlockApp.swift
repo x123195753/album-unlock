@@ -11,6 +11,13 @@ struct AlbumUnlockApp: App {
     }
 }
 
+// MARK: - 主题（统一淡色系，全 App 图标均使用 SF Symbols 矢量符号）
+
+enum Theme {
+    /// 统一淡蓝主题色
+    static let accent = Color(red: 0.45, green: 0.62, blue: 0.94)
+}
+
 // MARK: - 模拟定位设置
 
 struct LocationSettings: Codable, Equatable {
@@ -175,6 +182,7 @@ struct LocationSettingsView: View {
 
                     if mode == "manual" {
                         Toggle("启用定位模拟", isOn: $enabled)
+                            .tint(Theme.accent)
                         if !pickedPlace.isEmpty {
                             HStack(spacing: 6) {
                                 Image(systemName: "mappin.circle.fill")
@@ -222,8 +230,8 @@ struct LocationSettingsView: View {
                             } label: {
                                 HStack {
                                     Image(systemName: "mappin.and.ellipse")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(Color(red: 0.45, green: 0.62, blue: 0.94))
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(Theme.accent)
                                     Text(p.name)
                                     Spacer()
                                     Text(String(format: "%.4f, %.4f", p.lat, p.lng))
@@ -240,7 +248,8 @@ struct LocationSettingsView: View {
                             saveCurrentAsPreset()
                         } label: {
                             Label("添加当前位置", systemImage: "plus.circle.fill")
-                                .foregroundColor(Color(red: 0.45, green: 0.62, blue: 0.94))
+                                .font(.subheadline.weight(.medium))
+                                .foregroundColor(Theme.accent)
                         }
                     }
 
@@ -274,8 +283,8 @@ struct LocationSettingsView: View {
                             } label: {
                                 HStack(alignment: .top, spacing: 8) {
                                     Image(systemName: "magnifyingglass.circle.fill")
-                                        .font(.system(size: 15))
-                                        .foregroundColor(Color(red: 0.45, green: 0.62, blue: 0.94))
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(Theme.accent)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(r.name)
                                             .font(.subheadline)
@@ -552,35 +561,45 @@ struct ContentView: View {
                 navIcon("chevron.left", active: core.canGoBack) { core.webView.goBack() }
                 navIcon("chevron.right", active: core.canGoForward) { core.webView.goForward() }
 
-                TextField("搜索或输入网址", text: $urlField)
-                    .keyboardType(.URL)
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
-                    .font(.system(size: 14))
-                    .multilineTextAlignment(.center)
-                    .submitLabel(.go)
-                    .onSubmit { goToURL() }
+                Rectangle()
+                    .fill(Color.primary.opacity(0.10))
+                    .frame(width: 1, height: 18)
+                    .padding(.horizontal, 6)
+
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color(.secondaryLabel))
+                    TextField("搜索或输入网址", text: $urlField)
+                        .keyboardType(.URL)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                        .font(.system(size: 14))
+                        .submitLabel(.go)
+                        .onSubmit { goToURL() }
+                }
 
                 Button {
                     core.webView.reload()
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundColor(Color(.secondaryLabel))
+                        .frame(width: 30, height: 30)
                 }
-                .padding(.horizontal, 9)
 
                 Button {
                     goToURL()
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(Color(red: 0.45, green: 0.62, blue: 0.94))
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundColor(Theme.accent)
+                        .frame(width: 34, height: 34)
                 }
-                .padding(.trailing, 2)
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 6)
+            .padding(.leading, 6)
+            .padding(.trailing, 4)
+            .padding(.vertical, 5)
             .background(RoundedRectangle(cornerRadius: 22).fill(Color(.secondarySystemBackground)))
             .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color.primary.opacity(0.05)))
             .padding(.horizontal, 12)
@@ -609,7 +628,7 @@ struct ContentView: View {
             } label: {
                 Image(systemName: "wrench.and.screwdriver.fill")
                     .font(.system(size: 21))
-                    .foregroundColor(Color(red: 0.45, green: 0.62, blue: 0.94))
+                    .foregroundColor(Theme.accent)
                     .frame(width: 56, height: 56)
                     .background(Circle().fill(.ultraThinMaterial))
                     .overlay(Circle().stroke(Color.primary.opacity(0.08)))
@@ -666,7 +685,7 @@ struct ContentView: View {
     private func navIcon(_ systemName: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 15, weight: .medium))
                 .foregroundColor(active ? Color(.label) : Color(.tertiaryLabel))
                 .frame(width: 34, height: 34)
         }
@@ -679,22 +698,22 @@ struct ContentView: View {
 struct ToastBubble: View {
     let text: String
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        VStack(spacing: 6) {
             Image(systemName: "info.circle.fill")
-                .font(.system(size: 15))
-                .foregroundColor(Color(red: 0.45, green: 0.62, blue: 0.94))
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(Theme.accent)
             Text(text)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(Color(.label))
-                .lineLimit(3)
-                .multilineTextAlignment(.leading)
+                .multilineTextAlignment(.center)  // 多行时每一行都居中
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 11)
+        .frame(maxWidth: 320)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
         .background(RoundedRectangle(cornerRadius: 18).fill(.ultraThinMaterial))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.primary.opacity(0.08)))
         .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 4)
-        .padding(.horizontal, 36)
     }
 }
 
@@ -714,31 +733,33 @@ struct ToolMenuView: View {
                         set: { core.setUnlockEnabled($0) }
                     )) {
                         Label("自动解锁相册", systemImage: "lock.open.fill")
+                            .font(.subheadline.weight(.medium))
                     }
+                    .tint(Theme.accent)
                     if core.unlockEnabled {
-                        toolRow("doc.text.magnifyingglass", color: .teal, title: "扫描文件框", subtitle: "查看上传框解锁状态") {
+                        toolRow("doc.text.magnifyingglass", title: "扫描文件框", subtitle: "查看上传框解锁状态") {
                             dismiss()
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { core.scanFileInputs() }
                         }
                     }
                 }
                 Section(header: Text("定位")) {
-                    toolRow("location.fill", color: .red, title: "定位设置", subtitle: "手机定位 / 手动坐标 / 地名搜索") {
+                    toolRow("location.fill", title: "定位设置", subtitle: "手机定位 / 手动坐标 / 地名搜索") {
                         onOpenLocation()
                     }
                 }
                 Section(header: Text("排查")) {
-                    toolRow("antenna.radiowaves.left.and.right", color: .purple, title: "调试", subtitle: "导出凭据与子应用地址") {
+                    toolRow("antenna.radiowaves.left.and.right", title: "调试", subtitle: "导出凭据与子应用地址") {
                         dismiss()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { core.dumpDebugInfo() }
                     }
-                    toolRow("arrow.clockwise", color: .blue, title: "重新加载页面", subtitle: nil) {
+                    toolRow("arrow.clockwise", title: "重新加载页面", subtitle: nil) {
                         dismiss()
                         core.webView.reload()
                     }
                 }
                 Section(header: Text("维护"), footer: Text("清除缓存会同时清除登录状态，需要重新登录门户。")) {
-                    toolRow("trash.fill", color: .pink, title: "清除所有缓存", subtitle: "将退出登录", destructive: true) {
+                    toolRow("trash.fill", title: "清除所有缓存", subtitle: "将退出登录", destructive: true) {
                         dismiss()
                         core.clearAllCache()
                     }
@@ -761,19 +782,18 @@ struct ToolMenuView: View {
         }
     }
 
-    /// 彩色图标工具行
-    private func toolRow(_ icon: String, color: Color, title: String, subtitle: String?,
+    /// 统一风格工具行：SF Symbols 矢量图标 + 淡蓝主题底色
+    private func toolRow(_ icon: String, title: String, subtitle: String?,
                          destructive: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 30, height: 30)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(destructive ? .red : Theme.accent)
+                    .frame(width: 32, height: 32)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(LinearGradient(colors: [color, color.opacity(0.75)],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+                        RoundedRectangle(cornerRadius: 9)
+                            .fill(destructive ? Color.red.opacity(0.12) : Theme.accent.opacity(0.13))
                     )
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
@@ -787,7 +807,7 @@ struct ToolMenuView: View {
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(Color(.tertiaryLabel))
             }
             .padding(.vertical, 2)
