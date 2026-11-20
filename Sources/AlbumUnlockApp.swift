@@ -751,16 +751,6 @@ struct ToolMenuView: View {
                         onOpenLocation()
                     }
                 }
-                Section(header: Text("排查")) {
-                    toolRow("antenna.radiowaves.left.and.right", color: .purple, title: "调试", subtitle: "导出凭据与子应用地址") {
-                        dismiss()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { core.dumpDebugInfo() }
-                    }
-                    toolRow("arrow.clockwise", color: .blue, title: "重新加载页面", subtitle: nil) {
-                        dismiss()
-                        core.webView.reload()
-                    }
-                }
                 Section(header: Text("维护"), footer: Text("清除缓存会同时清除登录状态，需要重新登录门户。")) {
                     toolRow("trash.fill", color: .pink, title: "清除所有缓存", subtitle: "将退出登录", destructive: true) {
                         dismiss()
@@ -777,11 +767,6 @@ struct ToolMenuView: View {
             .listStyle(.insetGrouped)
             .navigationTitle("工具箱")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { dismiss() }
-                }
-            }
         }
     }
 
