@@ -558,14 +558,6 @@ struct ContentView: View {
         VStack(spacing: 0) {
             // 顶部融合式玻璃地址栏（iOS 液态玻璃风格）
             HStack(spacing: 0) {
-                navIcon("chevron.left", active: core.canGoBack) { core.webView.goBack() }
-                navIcon("chevron.right", active: core.canGoForward) { core.webView.goForward() }
-
-                Rectangle()
-                    .fill(Color.primary.opacity(0.10))
-                    .frame(width: 1, height: 18)
-                    .padding(.horizontal, 6)
-
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 12, weight: .medium))
@@ -589,7 +581,7 @@ struct ContentView: View {
                 }
                 .padding(.trailing, 6)
             }
-            .padding(.leading, 6)
+            .padding(.leading, 14)
             .padding(.trailing, 4)
             .padding(.vertical, 5)
             .background(RoundedRectangle(cornerRadius: 22).fill(Color(.secondarySystemBackground)))
@@ -678,7 +670,7 @@ struct ContentView: View {
         }
     }
 
-    /// 地址栏内嵌导航图标按钮（融合式，无独立背景）
+    /// （已改用侧滑手势返回，导航图标保留备用）
     private func navIcon(_ systemName: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
@@ -755,7 +747,7 @@ struct ToolMenuView: View {
                     }
                 }
                 Section(header: Text("定位")) {
-                    toolRow("location.fill", color: .red, title: "定位设置", subtitle: "手机定位 / 手动坐标 / 地名搜索") {
+                    toolRow("location.viewfinder", color: .red, title: "定位设置", subtitle: "手机定位 / 手动坐标 / 地名搜索") {
                         onOpenLocation()
                     }
                 }
@@ -900,7 +892,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         if s.effectiveMode == "device" {
             // 手机真实定位：拉取当前位置（成功后自动同步到页面并刷新）
             refreshDeviceLocation(force: true, reloadAfter: true)
-            statusLine = "📱 正在获取手机定位…"
+            statusLine = "正在获取手机定位…"
             return
         }
 
@@ -914,7 +906,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         """
         webView.evaluateJavaScript(js) { _, _ in }
         statusLine = s.effectiveMode == "manual" && s.enabled
-            ? "📍 \(String(format: "%.4f", s.lat)),\(String(format: "%.4f", s.lng))"
+            ? String(format: "定位 %.4f, %.4f", s.lat, s.lng)
             : "定位模拟已关闭"
         quickStats = statusLine
     }
@@ -937,7 +929,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         UserDefaults.standard.set(on, forKey: Self.unlockKey)
         rebuildScripts()
         webView.reload()
-        showToast(on ? "🔓 相册解锁已开启" : "🔒 相册解锁已关闭")
+        showToast(on ? "相册解锁已开启" : "相册解锁已关闭")
     }
 
     // MARK: 手机真实定位
@@ -953,7 +945,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         DeviceLocator.shared.fetch { [weak self] lat, lng, error in
             guard let self = self else { return }
             if let error = error {
-                DispatchQueue.main.async { self.statusLine = "📱定位失败: \(error)" }
+                DispatchQueue.main.async { self.statusLine = "定位失败: \(error)" }
                 return
             }
             LocationSettings.cacheDevice(lat: lat, lng: lng)
@@ -967,8 +959,8 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
                 self.webView.evaluateJavaScript(js) { _, _ in
                     if reloadAfter { self.webView.reload() }
                 }
-                self.statusLine = "📱 \(String(format: "%.4f", lat)),\(String(format: "%.4f", lng))"
-                self.quickStats = "📱 手机定位 \(String(format: "%.4f", lat)),\(String(format: "%.4f", lng))"
+                self.statusLine = "手机定位 \(String(format: "%.4f", lat)),\(String(format: "%.4f", lng))"
+                self.quickStats = "手机定位 \(String(format: "%.4f", lat)),\(String(format: "%.4f", lng))"
             }
         }
     }
