@@ -548,55 +548,18 @@ enum PlaceSearch {
 
 struct ContentView: View {
     @StateObject private var core = WebCore()
-    @State private var urlField = "http://qypt.shasteel.cn/mobile-apps/open"
+    private let homeURL = "http://qypt.shasteel.cn/mobile-apps/open"
     @State private var showLocationSheet = false
     @State private var showToolSheet = false
     @State private var locationSettings: LocationSettings = .load()
     @State private var toastText: String?
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 顶部融合式玻璃地址栏（iOS 液态玻璃风格）
-            HStack(spacing: 0) {
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Color(.secondaryLabel))
-                    TextField("搜索或输入网址", text: $urlField)
-                        .keyboardType(.URL)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                        .font(.system(size: 14))
-                        .submitLabel(.go)
-                        .onSubmit { goToURL() }
-                }
-
-                Button {
-                    core.webView.reload()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Color(.secondaryLabel))
-                        .frame(width: 30, height: 30)
-                }
-                .padding(.trailing, 6)
-            }
-            .padding(.leading, 14)
-            .padding(.trailing, 4)
-            .padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 22).fill(Color(.secondarySystemBackground)))
-            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color.primary.opacity(0.05)))
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
-            .background(Rectangle().fill(.ultraThinMaterial).ignoresSafeArea(edges: .top))
-
-            BrowserView(core: core)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // 关键：关闭 SwiftUI 的键盘自动避让，由 WebKit 内部滚动输入框到键盘上方。
-                // 否则双重避让会让第三方键盘（讯飞/搜狗）的工具条与键盘脱节、页面出现空隙。
-                .ignoresSafeArea(.keyboard, edges: .bottom)
-        }
+        BrowserView(core: core)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 关键：关闭 SwiftUI 的键盘自动避让，由 WebKit 内部滚动输入框到键盘上方。
+            // 否则双重避让会让第三方键盘（讯飞/搜狗）的工具条与键盘脱节、页面出现空隙。
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         .overlay(alignment: .bottom) {
             // 底部提示气泡（替代原状态行）
             if let t = toastText {
@@ -639,7 +602,7 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            core.load(urlField)
+            core.load(homeURL)
             core.refreshDeviceLocation()
         }
         .sheet(isPresented: $showLocationSheet) {
@@ -654,31 +617,6 @@ struct ContentView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showLocationSheet = true }
             }
         }
-    }
-
-    /// 统一处理"前往"：补协议、去空白后加载（修复原按钮无效问题）
-    private func goToURL() {
-        var s = urlField.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !s.isEmpty else { return }
-        let lower = s.lowercased()
-        if !lower.hasPrefix("http://") && !lower.hasPrefix("https://") { s = "http://" + s }
-        if let url = URL(string: s) {
-            urlField = s
-            core.load(s)
-        } else {
-            core.showToast("网址格式不正确")
-        }
-    }
-
-    /// （已改用侧滑手势返回，导航图标保留备用）
-    private func navIcon(_ systemName: String, active: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundColor(active ? Color(.label) : Color(.tertiaryLabel))
-                .frame(width: 34, height: 34)
-        }
-        .disabled(!active)
     }
 }
 
@@ -749,6 +687,12 @@ struct ToolMenuView: View {
                 Section(header: Text("定位")) {
                     toolRow("location.viewfinder", color: .red, title: "定位设置", subtitle: "手机定位 / 手动坐标 / 地名搜索") {
                         onOpenLocation()
+                    }
+                }
+                Section(header: Text("页面")) {
+                    toolRow("arrow.clockwise", color: .blue, title: "重新载入", subtitle: "刷新当前页面") {
+                        dismiss()
+                        core.webView.reload()
                     }
                 }
                 Section(header: Text("维护"), footer: Text("清除缓存会同时清除登录状态，需要重新登录门户。")) {
