@@ -312,7 +312,8 @@ final class WebCore: NSObject, ObservableObject {
         UIApplication.topViewController()?.present(alert, animated: true)
     }
 
-    /// 列出页面上所有 file input 状态，方便排查    func scanFileInputs() {
+    /// 列出页面上所有 file input 状态，方便排查
+    func scanFileInputs() {
         let js = """
         (function(){
           var out = [];
