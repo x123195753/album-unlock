@@ -553,7 +553,7 @@ struct ContentView: View {
     @State private var showLocationSheet = false
     @State private var showToolSheet = false
     @State private var locationSettings: LocationSettings = .load()
-    @State private var toastText: String?
+    @State private var toast: ToastMessage?
 
     var body: some View {
         BrowserView(core: core)
@@ -562,11 +562,13 @@ struct ContentView: View {
             // 否则双重避让会让第三方键盘（讯飞/搜狗）的工具条与键盘脱节、页面出现空隙。
             .ignoresSafeArea(.keyboard, edges: .bottom)
         .overlay(alignment: .bottom) {
-            // 底部提示气泡（替代原状态行）
-            if let t = toastText {
-                ToastBubble(text: t)
-                    .padding(.bottom, 118)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            // 全 App 唯一的提示出口：底部毛玻璃气泡（网页内自绘提示已移除，不再双份）
+            if let t = toast {
+                ToastBubble(message: t)
+                    .padding(.bottom, 108)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .opacity))
             }
         }
         .overlay(alignment: .bottomTrailing) {
@@ -590,16 +592,16 @@ struct ContentView: View {
             .padding(.trailing, 20)
             .padding(.bottom, 44)
         }
-        .onChange(of: core.statusLine) { newValue in
-            guard !newValue.isEmpty else { return }
-            withAnimation(.easeOut(duration: 0.25)) { toastText = newValue }
+        .onChange(of: core.toast) { newValue in
+            guard let t = newValue else { return }
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) { toast = t }
         }
-        .task(id: toastText) {
-            guard toastText != nil else { return }
-            let cur = toastText
-            try? await Task.sleep(nanoseconds: 3_500_000_000)
-            if toastText == cur {
-                withAnimation(.easeOut(duration: 0.3)) { toastText = nil }
+        .task(id: toast?.id) {
+            guard toast != nil else { return }
+            let cur = toast?.id
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            if toast?.id == cur {
+                withAnimation(.easeOut(duration: 0.25)) { toast = nil }
             }
         }
         .onAppear {
@@ -621,27 +623,70 @@ struct ContentView: View {
     }
 }
 
-// MARK: - 底部提示气泡
+// MARK: - 底部提示气泡（全 App 统一样式）
 
-struct ToastBubble: View {
-    let text: String
-    var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "info.circle.fill")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(Theme.accent)
-            Text(text)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(Color(.label))
-                .multilineTextAlignment(.center)  // 多行时每一行都居中
-                .fixedSize(horizontal: false, vertical: true)
+/// 气泡语义：决定图标与图标颜色（统一为一种视觉语言）
+enum ToastKind {
+    case info, success, locate, warning
+
+    var icon: String {
+        switch self {
+        case .info: return "info.circle.fill"
+        case .success: return "checkmark.circle.fill"
+        case .locate: return "location.fill"
+        case .warning: return "exclamationmark.triangle.fill"
         }
-        .frame(maxWidth: 320)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(RoundedRectangle(cornerRadius: 18).fill(.ultraThinMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.primary.opacity(0.08)))
-        .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 4)
+    }
+
+    var color: Color {
+        switch self {
+        case .info: return Theme.accent
+        case .success: return .green
+        case .locate: return .red
+        case .warning: return .orange
+        }
+    }
+}
+
+/// 一条提示消息（id 用于让重复文字也能重新触发动画与计时）
+struct ToastMessage: Equatable, Identifiable {
+    let id = UUID()
+    let text: String
+    let kind: ToastKind
+
+    init(_ text: String, kind: ToastKind = .info) {
+        self.text = text
+        self.kind = kind
+    }
+
+    static func == (lhs: ToastMessage, rhs: ToastMessage) -> Bool { lhs.id == rhs.id }
+}
+
+/// 毛玻璃胶囊：图标 + 单行文案（宽度随内容自适应，过长自动缩字）
+struct ToastBubble: View {
+    let message: ToastMessage
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: message.kind.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(message.kind.color)
+            Text(message.text)
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundColor(Color(.label))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 19, style: .continuous).fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 19, style: .continuous)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 0.8)
+        )
+        .shadow(color: .black.opacity(0.10), radius: 10, x: 0, y: 3)
     }
 }
 
@@ -766,6 +811,8 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var canGoBack = false
     @Published var canGoForward = false
     @Published var statusLine = ""
+    /// 统一提示气泡的唯一数据源（网页内不再自绘提示）
+    @Published var toast: ToastMessage?
     @Published var quickStats = "尚未加载页面"
     @Published var unlockEnabled = true
 
@@ -846,9 +893,9 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         rebuildScripts()
 
         if s.effectiveMode == "device" {
-            // 手机真实定位：拉取当前位置（成功后自动同步到页面并刷新）
-            refreshDeviceLocation(force: true, reloadAfter: true)
-            statusLine = "正在获取手机定位…"
+            // 手机真实定位：拉取当前位置（成功后自动同步到页面并刷新）。
+            // 抓取过程静默，成功/失败各只弹一条气泡，避免连续两条打断。
+            refreshDeviceLocation(force: true, reloadAfter: true, announce: true)
             return
         }
 
@@ -861,10 +908,11 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         })()
         """
         webView.evaluateJavaScript(js) { _, _ in }
-        statusLine = s.effectiveMode == "manual" && s.enabled
-            ? String(format: "定位 %.4f, %.4f", s.lat, s.lng)
-            : "定位模拟已关闭"
-        quickStats = statusLine
+        if s.effectiveMode == "manual" && s.enabled {
+            showToast(String(format: "定位已设为 %.4f, %.4f", s.lat, s.lng), kind: .locate)
+        } else {
+            showToast("定位模拟已关闭")
+        }
     }
 
     /// 重建预置脚本（定位设置变化后调用，保证后续导航带上新参数）
@@ -885,7 +933,28 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         UserDefaults.standard.set(on, forKey: Self.unlockKey)
         rebuildScripts()
         webView.reload()
-        showToast(on ? "相册解锁已开启" : "相册解锁已关闭")
+        showToast(on ? "相册解锁已开启" : "相册解锁已关闭", kind: on ? .success : .info)
+    }
+
+    // MARK: 首次就绪提示（合并解锁与定位状态，只弹一条）
+
+    private var didAnnounceReady = false
+
+    /// 是否真的在模拟定位（与 preludeScript 的判定保持一致）
+    private var locationFaking: Bool {
+        switch locationSettings.effectiveMode {
+        case "off": return false
+        case "device": return LocationSettings.cachedDevice() != nil
+        default: return locationSettings.enabled
+        }
+    }
+
+    private func announceReady() {
+        if locationFaking {
+            showToast("已就绪 · 定位已模拟", kind: .success)
+        } else {
+            showToast("已就绪 · 未模拟定位")
+        }
     }
 
     // MARK: 手机真实定位
@@ -894,14 +963,18 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
 
     /// 手机定位模式下：取当前位置（WGS-84 → GCJ-02），写入缓存并同步到当前页面。
     /// 每次页面导航时自动调用（30 秒节流），移动中也能拿到最新位置。
-    func refreshDeviceLocation(force: Bool = false, reloadAfter: Bool = false) {
+    func refreshDeviceLocation(force: Bool = false, reloadAfter: Bool = false, announce: Bool = false) {
         guard locationSettings.effectiveMode == "device" else { return }
         if !force, Date().timeIntervalSince(lastDeviceFetchAt) < 30 { return }
         lastDeviceFetchAt = Date()
         DeviceLocator.shared.fetch { [weak self] lat, lng, error in
             guard let self = self else { return }
             if let error = error {
-                DispatchQueue.main.async { self.statusLine = "定位失败: \(error)" }
+                DispatchQueue.main.async {
+                    self.statusLine = "定位失败: \(error)"
+                    // 仅在用户主动切换定位时提示，后台导航触发的失败不打扰
+                    if announce { self.showToast("定位失败，请检查定位权限", kind: .warning) }
+                }
                 return
             }
             LocationSettings.cacheDevice(lat: lat, lng: lng)
@@ -915,8 +988,10 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
                 self.webView.evaluateJavaScript(js) { _, _ in
                     if reloadAfter { self.webView.reload() }
                 }
-                self.statusLine = "手机定位 \(String(format: "%.4f", lat)),\(String(format: "%.4f", lng))"
-                self.quickStats = "手机定位 \(String(format: "%.4f", lat)),\(String(format: "%.4f", lng))"
+                let coord = String(format: "%.4f, %.4f", lat, lng)
+                self.statusLine = "手机定位 " + coord
+                self.quickStats = "手机定位 " + coord
+                if announce { self.showToast("定位已更新 " + coord, kind: .locate) }
             }
         }
     }
@@ -982,6 +1057,11 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // 首次加载完成：只弹一条精简就绪提示（网页内自绘提示已移除，不会双份）
+        if !didAnnounceReady {
+            didAnnounceReady = true
+            announceReady()
+        }
         // 页面加载完成：提取标题与主题色，标题栏自动跟随变色
         webView.evaluateJavaScript(Self.themeJS) { [weak self] res, _ in
             guard let self = self else { return }
@@ -1015,22 +1095,23 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
             i.removeAttribute('capture'); n++;
           });
           var s = window.__albumUnlockStats ? window.__albumUnlockStats() : {};
-          return '已解锁 ' + (n + (s.unlocked || 0)) + ' 个上传框｜定位 ' + (s.fakeLocation || '未开启');
+          return '已解锁 ' + (n + (s.unlocked || 0)) + ' 个上传框' +
+            (s.fakeLocation && s.fakeLocation !== 'off' ? ' · 定位已模拟' : '');
         })()
         """
         webView.evaluateJavaScript(js) { [weak self] result, _ in
             DispatchQueue.main.async {
                 let text = (result as? String) ?? "脚本未就绪"
-                self?.statusLine = text
-                self?.quickStats = text
+                self?.showToast(text)
             }
         }
     }
 
-    /// 应用内轻提示：改为底部气泡（不再弹窗打断）
-    func showToast(_ text: String) {
+    /// 应用内轻提示：统一走底部气泡（同一时刻只存在一条，新提示直接替换旧的）
+    func showToast(_ text: String, kind: ToastKind = .info) {
         quickStats = text
-        statusLine = (statusLine == text) ? text + " " : text
+        statusLine = text
+        toast = ToastMessage(text, kind: kind)
     }
 
     /// 清除全部网站数据（缓存/Cookie/localStorage 等），会丢失登录态
@@ -1040,7 +1121,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
                                                 modifiedSince: Date(timeIntervalSince1970: 0)) { [weak self] in
             DispatchQueue.main.async {
                 self?.webView.reload()
-                self?.statusLine = "已清除全部缓存"
+                self?.showToast("已清除全部缓存", kind: .success)
                 self?.quickStats = "已清除全部缓存（已退出登录）"
             }
         }
@@ -1096,11 +1177,23 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
           return out.length ? out.join('\\n') : '本页面没有 file input（可能在 iframe 内，脚本已自动覆盖）';
         })()
         """
-        webView.evaluateJavaScript(js) { result, _ in
-            let text = (result as? String) ?? "扫描失败"
-            let alert = UIAlertController(title: "文件上传框状态", message: text, preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "好的", style: .default))
-            UIApplication.topViewController()?.present(alert, animated: true)
+        webView.evaluateJavaScript(js) { [weak self] result, _ in
+            let text = (result as? String) ?? ""
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if text.contains("没有 file input") {
+                    self.showToast("本页未发现上传框")
+                    return
+                }
+                let lines = text.split(separator: "\n")
+                let unlocked = lines.filter { $0.contains("[已解锁]") }.count
+                let locked = lines.count - unlocked
+                if locked > 0 {
+                    self.showToast("\(locked) 个上传框仍在锁定", kind: .warning)
+                } else {
+                    self.showToast("已解锁 \(unlocked) 个上传框", kind: .success)
+                }
+            }
         }
     }
 }

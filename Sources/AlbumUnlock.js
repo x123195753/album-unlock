@@ -9,19 +9,8 @@
 
   var unlockedCount = 0;
 
-  function toast(msg) {
-    try {
-      var d = document.createElement('div');
-      d.textContent = msg;
-      d.style.cssText = 'position:fixed;left:50%;bottom:80px;transform:translateX(-50%);' +
-        'z-index:2147483647;background:rgba(255,255,255,.96);color:#2c2c30;padding:10px 18px;' +
-        'border-radius:14px;font-size:13px;pointer-events:none;transition:opacity .4s;' +
-        'box-shadow:0 4px 18px rgba(0,0,0,.14);max-width:78vw;line-height:1.5;';
-      document.body.appendChild(d);
-      setTimeout(function () { d.style.opacity = '0'; }, 2000);
-      setTimeout(function () { d.remove(); }, 2600);
-    } catch (e) {}
-  }
+  // 提示统一由原生底部气泡渲染（毛玻璃胶囊 + 语义图标），网页内不再自绘，
+  // 避免刚打开时同时出现网页 toast 与原生气泡两种风格。
 
   /* ============ 一、相册解锁 ============ */
 
@@ -245,15 +234,5 @@
     };
   };
 
-  function readyToast() {
-    var f = window.__albumFakeLocation;
-    var msg = UNLOCK_ON ? '沙钢拍照已就绪' : '自动解锁已关闭';
-    if (f && f.enabled) msg += '｜定位 ' + Number(f.lat).toFixed(4) + ',' + Number(f.lng).toFixed(4);
-    toast(msg);
-  }
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(readyToast, 600);
-  } else {
-    window.addEventListener('DOMContentLoaded', function () { setTimeout(readyToast, 600); });
-  }
+  // 就绪提示不再由网页弹出：原生在首个 didFinish 统一发一条（含定位状态）
 })();
