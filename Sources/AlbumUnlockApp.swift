@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 import CoreLocation
+import MapKit
 import UIKit
 
 @main
@@ -255,11 +256,11 @@ struct LocationSettingsView: View {
                     }
 
                     // 手动搜索位置：输入地名，自动查出坐标并转为火星坐标
-                    Section(header: Text("搜索位置"), footer: Text("输入地名搜索，点选结果即自动填入坐标。可搜城市、街道、小区、地标；搜不到时试试更具体的关键词，如「张家港市锦丰镇」。")) {
+                    Section(header: Text("搜索位置"), footer: Text("可搜企业名、地址或经纬度，点选即填入坐标。例：「常州新岚循环利用有限公司」「安宁路84号」「31.9164,119.9080」。搜企业名会自动忽略「有限公司」等后缀。")) {
                         HStack(spacing: 8) {
                             Image(systemName: "magnifyingglass")
                                 .foregroundColor(.secondary)
-                            TextField("输入地名关键词", text: $searchText)
+                            TextField("企业名 / 地址 / 经纬度", text: $searchText)
                                 .submitLabel(.search)
                                 .onSubmit { runPlaceSearch() }
                             if searching {
@@ -291,6 +292,13 @@ struct LocationSettingsView: View {
                                             .font(.subheadline)
                                             .foregroundColor(.primary)
                                             .multilineTextAlignment(.leading)
+                                        if let d = r.detail, !d.isEmpty, d != r.name {
+                                            Text(d)
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                                .lineLimit(2)
+                                                .multilineTextAlignment(.leading)
+                                        }
                                         Text(String(format: "%.4f, %.4f", r.lat, r.lng))
                                             .font(.caption2)
                                             .foregroundColor(.secondary)
@@ -350,7 +358,7 @@ struct LocationSettingsView: View {
                 }
                 searchResults = results
                 if results.isEmpty {
-                    searchHint = "没搜到这个地址，试试更具体的关键词，如「张家港市锦丰镇」"
+                    searchHint = "没搜到。试试只输关键字（如「常州 新岚」），或直接输经纬度。"
                 }
             }
         }
@@ -427,48 +435,154 @@ struct LocationSettingsView: View {
 struct PlaceResult: Identifiable {
     let id = UUID()
     let name: String
+    /// 地址等补充信息（Apple 地图会给出完整地址）
+    var detail: String? = nil
     let lat: Double // 已转 GCJ-02
     let lng: Double
     var coordText: String { String(format: "%.4f, %.4f", lat, lng) }
 }
 
 enum PlaceSearch {
-    /// 三源并发搜索，结果合并去重（GCJ-02 坐标）
+    /// 企业名 / 地址 / 坐标统一搜索：
+    /// 1) Apple 地图（中国大陆由高德供数，含企业商户 POI，无需 Key）
+    /// 2) ArcGIS / Nominatim / Photon 兜底地址与地标
+    /// 3) 全名搜不到时逐级简化关键词（去公司后缀 → 去行业词），兼容工商名与口语名不一致
     static func search(_ query: String, completion: @escaping ([PlaceResult], String?) -> Void) {
-        let qs = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { completion([], "请输入关键词"); return }
+        if let coord = parseCoordinate(q) { completion([coord], nil); return }
+
+        // 整体 9 秒上限：多级重试时不会一直转圈
+        let lock = NSLock()
+        var done = false
+        let finish: ([PlaceResult], String?) -> Void = { results, err in
+            lock.lock(); let first = !done; done = true; lock.unlock()
+            guard first else { return }
+            completion(results, err)
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 9) {
+            lock.lock(); let first = !done; done = true; lock.unlock()
+            guard first else { return }
+            DispatchQueue.main.async { completion([], "搜索超时，换个关键词或检查网络") }
+        }
+        runLevel(queryVariants(q), index: 0, rawQuery: q, completion: finish)
+    }
+
+    // MARK: 分级检索（上一级没有结果才降级重试）
+
+    private static func runLevel(_ levels: [String], index: Int, rawQuery: String,
+                                 completion: @escaping ([PlaceResult], String?) -> Void) {
+        guard index < levels.count else { completion([], nil); return }
         var merged: [PlaceResult] = []
         let lock = NSLock()
         let group = DispatchGroup()
-
         let sources: [(String, (String, @escaping ([PlaceResult]) -> Void) -> Void)] = [
+            ("apple", fetchAppleMaps),
             ("arcgis", fetchArcGIS),
             ("nominatim", fetchNominatim),
             ("photon", fetchPhoton)
         ]
         for s in sources {
             group.enter()
-            s.1(qs) { r in
-                lock.lock()
-                merged += r
-                lock.unlock()
+            s.1(levels[index]) { r in
+                lock.lock(); merged += r; lock.unlock()
                 group.leave()
             }
         }
         group.notify(queue: .main) {
-            // 按 名称+坐标 去重，最多 10 条
             var seen = Set<String>()
             var out: [PlaceResult] = []
             for r in merged {
-                let key = String(r.name.prefix(16)) + String(format: "|%.3f,%.3f", r.lat, r.lng)
+                let key = String(r.name.prefix(20)) + String(format: "|%.3f,%.3f", r.lat, r.lng)
                 if seen.insert(key).inserted { out.append(r) }
-                if out.count >= 10 { break }
             }
-            completion(out, nil)
+            if out.isEmpty, index + 1 < levels.count {
+                // 全名（或含地区全名）无结果，换更短的关键词再来一轮
+                runLevel(levels, index: index + 1, rawQuery: rawQuery, completion: completion)
+                return
+            }
+            out.sort { rank($0, rawQuery) > rank($1, rawQuery) }
+            completion(Array(out.prefix(12)), nil)
         }
     }
 
-    // ---------- ArcGIS World Geocoder（对中文地址/POI 支持最好，主源） ----------
-    private static func fetchArcGIS(_ qs: String, _ completion: @escaping ([PlaceResult]) -> Void) {
+    // MARK: 关键词变体
+
+    /// 全名 → 去掉公司后缀 → 再去掉行业词，只留「地名 + 专名」
+    private static func queryVariants(_ q: String) -> [String] {
+        var out = [q]
+        var s = q
+        for suf in ["股份有限公司", "有限责任公司", "有限公司", "分公司", "公司", "集团", "厂"]
+        where s.hasSuffix(suf) && s.count > suf.count {
+            s = String(s.dropLast(suf.count))
+            break
+        }
+        if s != q, !s.isEmpty { out.append(s) }
+
+        let industry = ["资源循环利用", "循环利用", "再生资源", "新材料", "科技", "环保", "实业",
+                        "贸易", "物流", "机械", "建设", "工程", "制造", "服务", "发展",
+                        "技术", "商贸", "工贸", "制品", "材料"]
+        var core = s
+        for w in industry { core = core.replacingOccurrences(of: w, with: "") }
+        core = core.trimmingCharacters(in: .whitespaces)
+        if core != s, core.count >= 2, !out.contains(core) { out.append(core) }
+        return out
+    }
+
+    /// 直接输入经纬度："31.2989,120.5853"（纬,经）或 "120.5853,31.2989" 均可
+    private static func parseCoordinate(_ s: String) -> PlaceResult? {
+        let parts = s.split(whereSeparator: { $0 == "," || $0 == "，" || $0 == " " })
+            .compactMap { Double($0) }
+        guard parts.count == 2 else { return nil }
+        var lat = parts[0], lng = parts[1]
+        if abs(lat) > 90, abs(lng) <= 90 { swap(&lat, &lng) }
+        guard abs(lat) <= 90, abs(lng) <= 180, lat != 0, lng != 0 else { return nil }
+        return PlaceResult(name: String(format: "坐标 %.5f, %.5f", lat, lng),
+                           detail: "手动输入的经纬度（GCJ-02）", lat: lat, lng: lng)
+    }
+
+    /// 相关度：查询里的有效字有多少出现在结果名称/地址中
+    private static func rank(_ r: PlaceResult, _ query: String) -> Double {
+        let ignore = Set("的省市县区镇街道路号有限公司股份集团厂")
+        let qs = query.filter { !ignore.contains($0) && !$0.isWhitespace }
+        guard !qs.isEmpty else { return 0 }
+        let hay = r.name + " " + (r.detail ?? "")
+        var hit = 0
+        for ch in qs where hay.contains(ch) { hit += 1 }
+        var s = Double(hit) / Double(qs.count)
+        if r.name.contains(query) { s += 0.5 }
+        else if r.name.contains(String(qs.prefix(2))) { s += 0.15 }
+        return s
+    }
+
+    private static func enc(_ s: String) -> String {
+        s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? s
+    }
+
+    // ---------- Apple 地图（中国大陆由高德供数，企业/商户 POI 最全，无需 Key） ----------
+    private static func fetchAppleMaps(_ query: String, _ completion: @escaping ([PlaceResult]) -> Void) {
+        let req = MKLocalSearch.Request()
+        req.naturalLanguageQuery = query
+        // 偏向华东（沙钢一带），避免同名地点飘到别的城市或国外
+        req.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 31.8, longitude: 119.6),
+                                        span: MKCoordinateSpan(latitudeDelta: 16, longitudeDelta: 20))
+        MKLocalSearch(request: req).start { resp, _ in
+            var out: [PlaceResult] = []
+            for item in (resp?.mapItems ?? []).prefix(8) {
+                let c = item.placemark.coordinate
+                guard CLLocationCoordinate2DIsValid(c) else { continue }
+                // 中国大陆的 Apple 地图坐标本身已是 GCJ-02（与高德一致），不再二次偏移
+                out.append(PlaceResult(name: item.name ?? "未知地点",
+                                       detail: item.placemark.title,
+                                       lat: c.latitude, lng: c.longitude))
+            }
+            completion(out)
+        }
+    }
+
+    // ---------- ArcGIS World Geocoder（对中文地址支持好） ----------
+    private static func fetchArcGIS(_ query: String, _ completion: @escaping ([PlaceResult]) -> Void) {
+        let qs = enc(query)
         let urlStr = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates" +
             "?f=json&maxLocations=8&outFields=Match_addr,City,Region,Subregion&singleLine=\(qs)"
         request(urlStr) { obj in
@@ -488,7 +602,8 @@ enum PlaceSearch {
     }
 
     // ---------- OpenStreetMap Nominatim ----------
-    private static func fetchNominatim(_ qs: String, _ completion: @escaping ([PlaceResult]) -> Void) {
+    private static func fetchNominatim(_ query: String, _ completion: @escaping ([PlaceResult]) -> Void) {
+        let qs = enc(query)
         request("https://nominatim.openstreetmap.org/search?q=\(qs)&format=json&limit=8&accept-language=zh-CN") { obj in
             var out: [PlaceResult] = []
             if let arr = obj as? [[String: Any]] {
@@ -504,7 +619,8 @@ enum PlaceSearch {
     }
 
     // ---------- Photon (Komoot) ----------
-    private static func fetchPhoton(_ qs: String, _ completion: @escaping ([PlaceResult]) -> Void) {
+    private static func fetchPhoton(_ query: String, _ completion: @escaping ([PlaceResult]) -> Void) {
+        let qs = enc(query)
         request("https://photon.komoot.io/api/?q=\(qs)&limit=8") { obj in
             var out: [PlaceResult] = []
             if let dict = obj as? [String: Any],
