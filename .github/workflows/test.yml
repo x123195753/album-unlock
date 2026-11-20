@@ -2,7 +2,11 @@ name: Test Runner
 on:
   workflow_dispatch:
 jobs:
-  ubuntu-test:
-    runs-on: ubuntu-latest
+  mac-latest:
+    runs-on: macos-latest
     steps:
-      - run: echo "ubuntu works"
+      - run: echo "macos-latest works"
+  mac-13:
+    runs-on: macos-13
+    steps:
+      - run: echo "macos-13 works"
