@@ -4,6 +4,9 @@
   if (window.__albumUnlockInstalled) return;
   window.__albumUnlockInstalled = true;
 
+  // 相册解锁总开关（原生 App 预置 window.__albumUnlockEnabled）
+  var UNLOCK_ON = window.__albumUnlockEnabled !== false;
+
   var unlockedCount = 0;
 
   function toast(msg) {
@@ -11,17 +14,19 @@
       var d = document.createElement('div');
       d.textContent = msg;
       d.style.cssText = 'position:fixed;left:50%;bottom:80px;transform:translateX(-50%);' +
-        'z-index:2147483647;background:rgba(0,0,0,.75);color:#fff;padding:8px 14px;' +
-        'border-radius:8px;font-size:13px;pointer-events:none;transition:opacity .4s;';
+        'z-index:2147483647;background:rgba(255,255,255,.96);color:#2c2c30;padding:10px 18px;' +
+        'border-radius:14px;font-size:13px;pointer-events:none;transition:opacity .4s;' +
+        'box-shadow:0 4px 18px rgba(0,0,0,.14);max-width:78vw;line-height:1.5;';
       document.body.appendChild(d);
-      setTimeout(function () { d.style.opacity = '0'; }, 1800);
-      setTimeout(function () { d.remove(); }, 2400);
+      setTimeout(function () { d.style.opacity = '0'; }, 2000);
+      setTimeout(function () { d.remove(); }, 2600);
     } catch (e) {}
   }
 
   /* ============ 一、相册解锁 ============ */
 
   function unlockInput(input) {
+    if (!UNLOCK_ON) return;
     if (!input || input.nodeType !== 1) return;
     if (input.tagName !== 'INPUT' || input.type !== 'file') return;
     if (input.hasAttribute('capture')) {
@@ -59,23 +64,27 @@
   } catch (e) {}
 
   try {
-    var origSet = Element.prototype.setAttribute;
-    Element.prototype.setAttribute = function (name, value) {
-      if (this.tagName === 'INPUT' && String(name).toLowerCase() === 'capture') {
-        return;
-      }
-      return origSet.call(this, name, value);
-    };
+    if (UNLOCK_ON) {
+      var origSet = Element.prototype.setAttribute;
+      Element.prototype.setAttribute = function (name, value) {
+        if (this.tagName === 'INPUT' && String(name).toLowerCase() === 'capture') {
+          return;
+        }
+        return origSet.call(this, name, value);
+      };
+    }
   } catch (e) {}
 
   try {
-    var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'capture');
-    if (desc && desc.set) {
-      Object.defineProperty(HTMLInputElement.prototype, 'capture', {
-        configurable: true,
-        get: desc.get,
-        set: function () { /* 忽略，不写入 capture */ }
-      });
+    if (UNLOCK_ON) {
+      var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'capture');
+      if (desc && desc.set) {
+        Object.defineProperty(HTMLInputElement.prototype, 'capture', {
+          configurable: true,
+          get: desc.get,
+          set: function () { /* 忽略，不写入 capture */ }
+        });
+      }
     }
   } catch (e) {}
 
@@ -157,8 +166,8 @@
     if (window.wx.__albumPatched) return true;
     var wx = window.wx;
 
-    // 相册：chooseImage 只允许拍照时放开为 相册+拍照（真实微信环境同样生效）
-    if (typeof wx.chooseImage === 'function' && !wx.__chooseImagePatched) {
+    // 相册：chooseImage 只允许拍照时放开为 相册+拍照（受解锁开关控制）
+    if (UNLOCK_ON && typeof wx.chooseImage === 'function' && !wx.__chooseImagePatched) {
       var origChoose = wx.chooseImage;
       wx.chooseImage = function (opts) {
         opts = opts || {};
@@ -238,8 +247,8 @@
 
   function readyToast() {
     var f = window.__albumFakeLocation;
-    var msg = '相册解锁已就绪';
-    if (f && f.enabled) msg += '（定位模拟 ' + Number(f.lat).toFixed(4) + ',' + Number(f.lng).toFixed(4) + '）';
+    var msg = UNLOCK_ON ? '相册解锁已就绪' : '相册解锁已关闭';
+    if (f && f.enabled) msg += '｜定位 ' + Number(f.lat).toFixed(4) + ',' + Number(f.lng).toFixed(4);
     toast(msg);
   }
   if (document.readyState === 'complete' || document.readyState === 'interactive') {

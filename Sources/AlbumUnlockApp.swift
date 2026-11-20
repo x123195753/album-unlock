@@ -68,6 +68,40 @@ struct LocationSettings: Codable, Equatable {
     }
 }
 
+// MARK: - 常设位置（可增删，保存在本地）
+
+struct SavedPlace: Codable, Identifiable {
+    let name: String
+    let lat: Double
+    let lng: Double
+    var id: String { "\(name)|\(lat)|\(lng)" }
+}
+
+extension LocationSettings {
+    static let presetsKey = "savedPresets"
+
+    static let defaultPresets: [SavedPlace] = [
+        SavedPlace(name: "苏州（沙钢本地）", lat: 31.2989, lng: 120.5853),
+        SavedPlace(name: "上海人民广场", lat: 31.2335, lng: 121.4692),
+        SavedPlace(name: "上海张江", lat: 31.2040, lng: 121.5880),
+        SavedPlace(name: "南京新街口", lat: 32.0415, lng: 118.7785)
+    ]
+
+    static func loadPresets() -> [SavedPlace] {
+        if let data = UserDefaults.standard.data(forKey: presetsKey),
+           let arr = try? JSONDecoder().decode([SavedPlace].self, from: data) {
+            return arr
+        }
+        return defaultPresets
+    }
+
+    static func savePresets(_ p: [SavedPlace]) {
+        if let data = try? JSONEncoder().encode(p) {
+            UserDefaults.standard.set(data, forKey: presetsKey)
+        }
+    }
+}
+
 struct LocationSettingsView: View {
     @Binding var settings: LocationSettings
     var onApply: (LocationSettings) -> Void
@@ -91,13 +125,9 @@ struct LocationSettingsView: View {
     @State private var searchHint = ""
     @State private var pickedPlace = ""
 
-    // 常用预设（GCJ-02 坐标）
-    private let presets: [(name: String, lat: Double, lng: Double)] = [
-        ("苏州（沙钢本地）", 31.2989, 120.5853),
-        ("上海人民广场", 31.2335, 121.4692),
-        ("上海张江", 31.2040, 121.5880),
-        ("南京新街口", 32.0415, 118.7785)
-    ]
+    // 常设位置（可增删）
+    @State private var presets: [SavedPlace] = LocationSettings.loadPresets()
+    @State private var saveToPresetsAfterFetch = false
 
     init(settings: Binding<LocationSettings>, onApply: @escaping (LocationSettings) -> Void) {
         _settings = settings
@@ -182,8 +212,8 @@ struct LocationSettingsView: View {
                 }
 
                 if mode == "manual" {
-                    Section(header: Text("常用位置预设")) {
-                        ForEach(presets, id: \.name) { p in
+                    Section(header: Text("常设位置"), footer: Text("左滑可删除；点「添加当前位置」把手机定位存入列表。")) {
+                        ForEach(presets) { p in
                             Button {
                                 latText = String(format: "%.6f", p.lat)
                                 lngText = String(format: "%.6f", p.lng)
@@ -191,19 +221,31 @@ struct LocationSettingsView: View {
                                 pickedPlace = p.name
                             } label: {
                                 HStack {
-                                    Label(p.name, systemImage: "star.fill")
-                                        .labelStyle(TitleAndIconLabelStyle())
+                                    Image(systemName: "mappin.and.ellipse")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(Color(red: 0.45, green: 0.62, blue: 0.94))
+                                    Text(p.name)
                                     Spacer()
-                                    Text("\(String(format: "%.4f", p.lat)), \(String(format: "%.4f", p.lng))")
-                                        .font(.caption)
+                                    Text(String(format: "%.4f, %.4f", p.lat, p.lng))
+                                        .font(.caption2)
                                         .foregroundColor(.secondary)
                                 }
                             }
                         }
+                        .onDelete { offsets in
+                            presets.remove(atOffsets: offsets)
+                            LocationSettings.savePresets(presets)
+                        }
+                        Button {
+                            saveCurrentAsPreset()
+                        } label: {
+                            Label("添加当前位置", systemImage: "plus.circle.fill")
+                                .foregroundColor(Color(red: 0.45, green: 0.62, blue: 0.94))
+                        }
                     }
 
                     // 手动搜索位置：输入地名，自动查出坐标并转为火星坐标
-                    Section(header: Text("搜索位置"), footer: Text("输入地名搜索，点选结果即自动填入坐标。支持城市、街道、小区、地标，如「张家港 锦丰镇」。")) {
+                    Section(header: Text("搜索位置"), footer: Text("输入地名搜索，点选结果即自动填入坐标。可搜城市、街道、小区、地标；搜不到时试试更具体的关键词，如「张家港市锦丰镇」。")) {
                         HStack(spacing: 8) {
                             Image(systemName: "magnifyingglass")
                                 .foregroundColor(.secondary)
@@ -224,20 +266,25 @@ struct LocationSettingsView: View {
                         if !searchHint.isEmpty {
                             Text(searchHint)
                                 .font(.caption)
-                                .foregroundColor(searchResults.isEmpty ? .secondary : .secondary)
+                                .foregroundColor(.secondary)
                         }
                         ForEach(searchResults) { r in
                             Button {
                                 pickPlace(r)
                             } label: {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(r.name)
-                                        .font(.subheadline)
-                                        .foregroundColor(.primary)
-                                        .multilineTextAlignment(.leading)
-                                    Text("GCJ-02: \(r.coordText)")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
+                                HStack(alignment: .top, spacing: 8) {
+                                    Image(systemName: "magnifyingglass.circle.fill")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(Color(red: 0.45, green: 0.62, blue: 0.94))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(r.name)
+                                            .font(.subheadline)
+                                            .foregroundColor(.primary)
+                                            .multilineTextAlignment(.leading)
+                                        Text(String(format: "%.4f, %.4f", r.lat, r.lng))
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
                             }
                         }
@@ -258,6 +305,25 @@ struct LocationSettingsView: View {
         }
     }
 
+    /// 把当前位置存入常设列表
+    private func saveCurrentAsPreset() {
+        if let dl = deviceLat, let dg = deviceLng {
+            doSavePreset(dl, dg)
+        } else if let c = LocationSettings.cachedDevice() {
+            doSavePreset(c.lat, c.lng)
+        } else {
+            saveToPresetsAfterFetch = true
+            fetchDevice()
+        }
+    }
+
+    private func doSavePreset(_ lat: Double, _ lng: Double) {
+        let place = SavedPlace(name: "我的位置 \(presets.count + 1)", lat: lat, lng: lng)
+        presets.append(place)
+        LocationSettings.savePresets(presets)
+        searchHint = "已添加到常设位置"
+    }
+
     /// 执行地名搜索
     private func runPlaceSearch() {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -274,7 +340,7 @@ struct LocationSettingsView: View {
                 }
                 searchResults = results
                 if results.isEmpty {
-                    searchHint = "未找到相关地点，试试加上城市名，如「张家港 沙钢」"
+                    searchHint = "没搜到这个地址，试试更具体的关键词，如「张家港市锦丰镇」"
                 }
             }
         }
@@ -298,12 +364,17 @@ struct LocationSettingsView: View {
                 fetching = false
                 if let err = err {
                     deviceStatus = err
+                    saveToPresetsAfterFetch = false
                     return
                 }
                 deviceLat = lat
                 deviceLng = lng
                 deviceCoord = String(format: "%.6f, %.6f", lng, lat)
                 deviceStatus = "获取成功（GCJ-02）"
+                if saveToPresetsAfterFetch {
+                    saveToPresetsAfterFetch = false
+                    doSavePreset(lat, lng)
+                }
             }
         }
     }
@@ -341,7 +412,7 @@ struct LocationSettingsView: View {
     }
 }
 
-// MARK: - 地名搜索（OpenStreetMap Nominatim + Photon 双源，免密钥）
+// MARK: - 地名搜索（ArcGIS 世界地理编码 + OpenStreetMap Nominatim + Photon，三源并发免密钥）
 
 struct PlaceResult: Identifiable {
     let id = UUID()
@@ -352,68 +423,110 @@ struct PlaceResult: Identifiable {
 }
 
 enum PlaceSearch {
-    /// 搜索地名，返回 GCJ-02 坐标结果；err 为人类可读提示
+    /// 三源并发搜索，结果合并去重（GCJ-02 坐标）
     static func search(_ query: String, completion: @escaping ([PlaceResult], String?) -> Void) {
         let qs = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        let sources: [URL] = [
-            URL(string: "https://nominatim.openstreetmap.org/search?q=\(qs)&format=json&limit=8&accept-language=zh-CN")!,
-            URL(string: "https://photon.komoot.io/api/?q=\(qs)&limit=8")!
+        var merged: [PlaceResult] = []
+        let lock = NSLock()
+        let group = DispatchGroup()
+
+        let sources: [(String, (String, @escaping ([PlaceResult]) -> Void) -> Void)] = [
+            ("arcgis", fetchArcGIS),
+            ("nominatim", fetchNominatim),
+            ("photon", fetchPhoton)
         ]
-        fetch(sources, 0, completion)
+        for s in sources {
+            group.enter()
+            s.1(qs) { r in
+                lock.lock()
+                merged += r
+                lock.unlock()
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) {
+            // 按 名称+坐标 去重，最多 10 条
+            var seen = Set<String>()
+            var out: [PlaceResult] = []
+            for r in merged {
+                let key = String(r.name.prefix(16)) + String(format: "|%.3f,%.3f", r.lat, r.lng)
+                if seen.insert(key).inserted { out.append(r) }
+                if out.count >= 10 { break }
+            }
+            completion(out, nil)
+        }
     }
 
-    private static func fetch(_ sources: [URL], _ idx: Int, _ completion: @escaping ([PlaceResult], String?) -> Void) {
-        guard idx < sources.count else {
-            completion([], "搜索服务暂时不可用，请检查网络后重试")
-            return
-        }
-        var req = URLRequest(url: sources[idx])
-        req.timeoutInterval = 12
-        req.setValue("AlbumUnlockApp/2.0", forHTTPHeaderField: "User-Agent")
-        URLSession.shared.dataTask(with: req) { data, _, error in
-            guard let data = data, error == nil,
-                  let obj = try? JSONSerialization.jsonObject(with: data) else {
-                fetch(sources, idx + 1, completion)
-                return
+    // ---------- ArcGIS World Geocoder（对中文地址/POI 支持最好，主源） ----------
+    private static func fetchArcGIS(_ qs: String, _ completion: @escaping ([PlaceResult]) -> Void) {
+        let urlStr = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates" +
+            "?f=json&maxLocations=8&outFields=Match_addr,City,Region,Subregion&singleLine=\(qs)"
+        request(urlStr) { obj in
+            var out: [PlaceResult] = []
+            if let dict = obj as? [String: Any],
+               let candidates = dict["candidates"] as? [[String: Any]] {
+                for c in candidates {
+                    guard let addr = c["address"] as? String,
+                          let loc = c["location"] as? [String: Any],
+                          let lng = loc["x"] as? Double,
+                          let lat = loc["y"] as? Double else { continue }
+                    append(&out, name: addr, wgsLat: lat, wgsLng: lng)
+                }
             }
-            let results = parse(obj)
-            if results.isEmpty {
-                fetch(sources, idx + 1, completion)
-            } else {
-                completion(results, nil)
+            completion(out)
+        }
+    }
+
+    // ---------- OpenStreetMap Nominatim ----------
+    private static func fetchNominatim(_ qs: String, _ completion: @escaping ([PlaceResult]) -> Void) {
+        request("https://nominatim.openstreetmap.org/search?q=\(qs)&format=json&limit=8&accept-language=zh-CN") { obj in
+            var out: [PlaceResult] = []
+            if let arr = obj as? [[String: Any]] {
+                for item in arr {
+                    guard let latStr = item["lat"] as? String, let lat = Double(latStr),
+                          let lonStr = item["lon"] as? String, let lng = Double(lonStr),
+                          let name = item["display_name"] as? String else { continue }
+                    append(&out, name: name, wgsLat: lat, wgsLng: lng)
+                }
+            }
+            completion(out)
+        }
+    }
+
+    // ---------- Photon (Komoot) ----------
+    private static func fetchPhoton(_ qs: String, _ completion: @escaping ([PlaceResult]) -> Void) {
+        request("https://photon.komoot.io/api/?q=\(qs)&limit=8") { obj in
+            var out: [PlaceResult] = []
+            if let dict = obj as? [String: Any],
+               let features = dict["features"] as? [[String: Any]] {
+                for f in features {
+                    guard let geo = f["geometry"] as? [String: Any],
+                          let coords = geo["coordinates"] as? [Any], coords.count >= 2,
+                          let lng = coords[0] as? Double, let lat = coords[1] as? Double else { continue }
+                    let p = f["properties"] as? [String: Any] ?? [:]
+                    let parts = [p["name"], p["street"], p["district"], p["city"], p["county"], p["state"], p["country"]]
+                        .compactMap { $0 as? String }
+                        .filter { !$0.isEmpty }
+                    var deduped: [String] = []
+                    for part in parts where deduped.last != part { deduped.append(part) }
+                    append(&out, name: deduped.isEmpty ? "未知地点" : deduped.joined(separator: " "), wgsLat: lat, wgsLng: lng)
+                }
+            }
+            completion(out)
+        }
+    }
+
+    private static func request(_ urlStr: String, _ completion: @escaping (Any?) -> Void) {
+        guard let url = URL(string: urlStr) else { completion(nil); return }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 10
+        req.setValue("AlbumUnlockApp/2.1", forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            let obj = (data.flatMap { try? JSONSerialization.jsonObject(with: $0) })
+            DispatchQueue.global(qos: .userInitiated).async {
+                completion(obj)
             }
         }.resume()
-    }
-
-    private static func parse(_ obj: Any) -> [PlaceResult] {
-        var out: [PlaceResult] = []
-        if let arr = obj as? [[String: Any]] {
-            // Nominatim 格式：[{lat: "..", lon: "..", display_name: ".."}]
-            for item in arr {
-                guard let latStr = item["lat"] as? String, let lat = Double(latStr),
-                      let lonStr = item["lon"] as? String, let lng = Double(lonStr),
-                      let name = item["display_name"] as? String else { continue }
-                append(&out, name: name, wgsLat: lat, wgsLng: lng)
-            }
-        } else if let dict = obj as? [String: Any],
-                  let features = dict["features"] as? [[String: Any]] {
-            // Photon 格式：{features: [{geometry: {coordinates: [lon, lat]}, properties: {...}}]}
-            for f in features {
-                guard let geo = f["geometry"] as? [String: Any],
-                      let coords = geo["coordinates"] as? [Any], coords.count >= 2,
-                      let lng = coords[0] as? Double, let lat = coords[1] as? Double else { continue }
-                let p = f["properties"] as? [String: Any] ?? [:]
-                let parts = [p["name"], p["street"], p["district"], p["city"], p["county"], p["state"], p["country"]]
-                    .compactMap { $0 as? String }
-                    .filter { !$0.isEmpty }
-                // 去重相邻重复段
-                var deduped: [String] = []
-                for part in parts where deduped.last != part { deduped.append(part) }
-                let name = deduped.isEmpty ? "未知地点" : deduped.joined(separator: " ")
-                append(&out, name: name, wgsLat: lat, wgsLng: lng)
-            }
-        }
-        return out
     }
 
     private static func append(_ out: inout [PlaceResult], name: String, wgsLat: Double, wgsLng: Double) {
@@ -430,67 +543,50 @@ struct ContentView: View {
     @State private var showLocationSheet = false
     @State private var showToolSheet = false
     @State private var locationSettings: LocationSettings = .load()
+    @State private var toastText: String?
 
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部导航栏（渐变背景 + 胶囊地址栏）
-            VStack(spacing: 0) {
-                HStack(spacing: 10) {
-                    navIcon("chevron.left", active: core.canGoBack) { core.webView.goBack() }
-                    navIcon("chevron.right", active: core.canGoForward) { core.webView.goForward() }
+            // 顶部融合式玻璃地址栏（iOS 液态玻璃风格）
+            HStack(spacing: 0) {
+                navIcon("chevron.left", active: core.canGoBack) { core.webView.goBack() }
+                navIcon("chevron.right", active: core.canGoForward) { core.webView.goForward() }
 
-                    HStack(spacing: 6) {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.7))
-                        TextField("输入网址", text: $urlField)
-                            .keyboardType(.URL)
-                            .autocapitalization(.none)
-                            .disableAutocorrection(true)
-                            .font(.footnote)
-                            .foregroundColor(.white)
-                            .submitLabel(.go)
-                            .onSubmit { goToURL() }
-                        Button {
-                            core.webView.reload()
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.85))
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.18))
-                    .clipShape(Capsule())
+                TextField("搜索或输入网址", text: $urlField)
+                    .keyboardType(.URL)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                    .font(.system(size: 14))
+                    .multilineTextAlignment(.center)
+                    .submitLabel(.go)
+                    .onSubmit { goToURL() }
 
-                    Button {
-                        goToURL()
-                    } label: {
-                        Image(systemName: "paperplane.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
-                    }
+                Button {
+                    core.webView.reload()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Color(.secondaryLabel))
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 6)
-                .padding(.bottom, 4)
+                .padding(.horizontal, 9)
 
-                if !core.statusLine.isEmpty {
-                    Text(core.statusLine)
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.75))
-                        .lineLimit(1)
-                        .padding(.bottom, 6)
-                        .padding(.horizontal, 12)
+                Button {
+                    goToURL()
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(Color(red: 0.45, green: 0.62, blue: 0.94))
                 }
+                .padding(.trailing, 2)
             }
-            .background(
-                LinearGradient(colors: [Color(red: 0.27, green: 0.45, blue: 0.95),
-                                        Color(red: 0.20, green: 0.62, blue: 0.92)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-                    .ignoresSafeArea(edges: .top)
-            )
+            .padding(.horizontal, 6)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 22).fill(Color(.secondarySystemBackground)))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color.primary.opacity(0.05)))
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
+            .background(Rectangle().fill(.ultraThinMaterial).ignoresSafeArea(edges: .top))
 
             BrowserView(core: core)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -498,26 +594,41 @@ struct ContentView: View {
                 // 否则双重避让会让第三方键盘（讯飞/搜狗）的工具条与键盘脱节、页面出现空隙。
                 .ignoresSafeArea(.keyboard, edges: .bottom)
         }
+        .overlay(alignment: .bottom) {
+            // 底部提示气泡（替代原状态行）
+            if let t = toastText {
+                ToastBubble(text: t)
+                    .padding(.bottom, 118)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
-            // 悬浮工具按钮（右下角，渐变+光晕）
+            // 悬浮工具按钮（玻璃质感，淡蓝色图标）
             Button {
                 showToolSheet = true
             } label: {
                 Image(systemName: "wrench.and.screwdriver.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.white)
-                    .frame(width: 58, height: 58)
-                    .background(
-                        Circle().fill(
-                            LinearGradient(colors: [Color(red: 0.32, green: 0.50, blue: 0.98),
-                                                    Color(red: 0.24, green: 0.38, blue: 0.90)],
-                                           startPoint: .topLeading, endPoint: .bottomTrailing)
-                        )
-                        .shadow(color: Color(red: 0.28, green: 0.45, blue: 0.95).opacity(0.5), radius: 8, x: 0, y: 4)
-                    )
+                    .font(.system(size: 21))
+                    .foregroundColor(Color(red: 0.45, green: 0.62, blue: 0.94))
+                    .frame(width: 56, height: 56)
+                    .background(Circle().fill(.ultraThinMaterial))
+                    .overlay(Circle().stroke(Color.primary.opacity(0.08)))
+                    .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
             }
             .padding(.trailing, 20)
             .padding(.bottom, 44)
+        }
+        .onChange(of: core.statusLine) { newValue in
+            guard !newValue.isEmpty else { return }
+            withAnimation(.easeOut(duration: 0.25)) { toastText = newValue }
+        }
+        .task(id: toastText) {
+            guard toastText != nil else { return }
+            let cur = toastText
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            if toastText == cur {
+                withAnimation(.easeOut(duration: 0.3)) { toastText = nil }
+            }
         }
         .onAppear {
             core.load(urlField)
@@ -551,16 +662,39 @@ struct ContentView: View {
         }
     }
 
-    /// 顶部导航图标按钮
+    /// 地址栏内嵌导航图标按钮（融合式，无独立背景）
     private func navIcon(_ systemName: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(active ? .white : .white.opacity(0.35))
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(Color.white.opacity(active ? 0.22 : 0.10)))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(active ? Color(.label) : Color(.tertiaryLabel))
+                .frame(width: 34, height: 34)
         }
         .disabled(!active)
+    }
+}
+
+// MARK: - 底部提示气泡
+
+struct ToastBubble: View {
+    let text: String
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle.fill")
+                .font(.system(size: 15))
+                .foregroundColor(Color(red: 0.45, green: 0.62, blue: 0.94))
+            Text(text)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(Color(.label))
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .background(RoundedRectangle(cornerRadius: 18).fill(.ultraThinMaterial))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.primary.opacity(0.08)))
+        .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 4)
+        .padding(.horizontal, 36)
     }
 }
 
@@ -574,14 +708,18 @@ struct ToolMenuView: View {
     var body: some View {
         NavigationView {
             List {
-                Section(header: Text("相册解锁")) {
-                    toolRow("lock.open.fill", color: .orange, title: "解锁相册", subtitle: "恢复拍照/相册选择菜单") {
-                        dismiss()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { core.runUnlock() }
+                Section(header: Text("相册解锁"), footer: Text("关闭后页面将保留原始的拍照限制，刷新页面生效。")) {
+                    Toggle(isOn: Binding(
+                        get: { core.unlockEnabled },
+                        set: { core.setUnlockEnabled($0) }
+                    )) {
+                        Label("自动解锁相册", systemImage: "lock.open.fill")
                     }
-                    toolRow("doc.text.magnifyingglass", color: .teal, title: "扫描文件框", subtitle: "查看上传框解锁状态") {
-                        dismiss()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { core.scanFileInputs() }
+                    if core.unlockEnabled {
+                        toolRow("doc.text.magnifyingglass", color: .teal, title: "扫描文件框", subtitle: "查看上传框解锁状态") {
+                            dismiss()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { core.scanFileInputs() }
+                        }
                     }
                 }
                 Section(header: Text("定位")) {
@@ -660,22 +798,31 @@ struct ToolMenuView: View {
 // MARK: - WebView 核心
 
 final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
+    static let unlockKey = "albumUnlockEnabled"
+
     let webView: WKWebView
     @Published var canGoBack = false
     @Published var canGoForward = false
     @Published var statusLine = ""
     @Published var quickStats = "尚未加载页面"
+    @Published var unlockEnabled = true
 
     private var observers: [NSKeyValueObservation] = []
     private var locationSettings: LocationSettings = .load()
 
+    /// 预置脚本：解锁开关 + 定位模拟参数
+    private var combinedPrelude: String {
+        "window.__albumUnlockEnabled = \(unlockEnabled); " + locationSettings.preludeScript
+    }
+
     override init() {
         let cfg = WKWebViewConfiguration()
         let controller = cfg.userContentController
-        // 预置脚本：先写入定位模拟参数（所有 frame、文档开始时）
         let settings = LocationSettings.load()
+        let preludeSource = "window.__albumUnlockEnabled = \(UserDefaults.standard.object(forKey: Self.unlockKey) as? Bool ?? true); " + settings.preludeScript
+        // 预置脚本：先写入解锁开关与定位模拟参数（所有 frame、文档开始时）
         let prelude = WKUserScript(
-            source: settings.preludeScript,
+            source: preludeSource,
             injectionTime: .atDocumentStart,
             forMainFrameOnly: false,
             in: .page
@@ -694,6 +841,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         webView = WKWebView(frame: .zero, configuration: cfg)
 
         super.init()
+        unlockEnabled = UserDefaults.standard.object(forKey: Self.unlockKey) as? Bool ?? true
         webView.allowsBackForwardNavigationGestures = true
         webView.navigationDelegate = self
 
@@ -702,9 +850,6 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         })
         observers.append(webView.observe(\.canGoForward, options: [.new]) { [weak self] w, _ in
             self?.canGoForward = w.canGoForward
-        })
-        observers.append(webView.observe(\.url, options: [.new]) { [weak self] w, _ in
-            self?.statusLine = w.url?.host ?? ""
         })
     }
 
@@ -747,11 +892,20 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         let controller = webView.configuration.userContentController
         controller.removeAllUserScripts()
         controller.addUserScript(WKUserScript(
-            source: locationSettings.preludeScript,
+            source: combinedPrelude,
             injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
         controller.addUserScript(WKUserScript(
             source: AlbumUnlockScript.source,
             injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
+    }
+
+    /// 切换相册解锁总开关：保存、重建脚本并刷新页面立即生效
+    func setUnlockEnabled(_ on: Bool) {
+        unlockEnabled = on
+        UserDefaults.standard.set(on, forKey: Self.unlockKey)
+        rebuildScripts()
+        webView.reload()
+        showToast(on ? "🔓 相册解锁已开启" : "🔒 相册解锁已关闭")
     }
 
     // MARK: 手机真实定位
@@ -796,14 +950,13 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     func runUnlock() {
         let js = """
         (function(){
-          if (!window.__albumUnlockInstalled) { return '脚本未安装'; }
+          if (!window.__albumUnlockInstalled) { return '脚本未就绪，请刷新页面'; }
           var n = 0;
           document.querySelectorAll('input[type=file][capture]').forEach(function(i){
             i.removeAttribute('capture'); n++;
           });
           var s = window.__albumUnlockStats ? window.__albumUnlockStats() : {};
-          return '本次解锁:' + n + ' wx:' + (s.wxPatched ? 'ok' : 'n/a') +
-                 ' 定位:' + (s.fakeLocation || 'off');
+          return '已解锁 ' + (n + (s.unlocked || 0)) + ' 个上传框｜定位 ' + (s.fakeLocation || '未开启');
         })()
         """
         webView.evaluateJavaScript(js) { [weak self] result, _ in
@@ -815,11 +968,10 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         }
     }
 
-    /// 应用内轻提示
+    /// 应用内轻提示：改为底部气泡（不再弹窗打断）
     func showToast(_ text: String) {
-        let alert = UIAlertController(title: nil, message: text, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "好的", style: .default))
-        UIApplication.topViewController()?.present(alert, animated: true)
+        quickStats = text
+        statusLine = (statusLine == text) ? text + " " : text
     }
 
     /// 清除全部网站数据（缓存/Cookie/localStorage 等），会丢失登录态
