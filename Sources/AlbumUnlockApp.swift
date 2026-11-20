@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 import CoreLocation
+import UIKit
 
 @main
 struct AlbumUnlockApp: App {
@@ -555,11 +556,33 @@ struct ContentView: View {
     @State private var toastText: String?
 
     var body: some View {
-        BrowserView(core: core)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // 关键：关闭 SwiftUI 的键盘自动避让，由 WebKit 内部滚动输入框到键盘上方。
-            // 否则双重避让会让第三方键盘（讯飞/搜狗）的工具条与键盘脱节、页面出现空隙。
-            .ignoresSafeArea(.keyboard, edges: .bottom)
+        VStack(spacing: 0) {
+            // 标题栏：显示网页标题，背景自动跟随网页主题色
+            HStack(spacing: 8) {
+                Image(systemName: "safari")
+                    .font(.system(size: 14, weight: .medium))
+                Text(core.pageTitle.isEmpty ? "正在加载…" : core.pageTitle)
+                    .font(.system(size: 15, weight: .medium))
+                    .lineLimit(1)
+                Spacer()
+                Button {
+                    core.webView.reload()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14, weight: .medium))
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(core.barBackground)
+            .foregroundColor(core.barForeground)
+
+            BrowserView(core: core)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // 关键：关闭 SwiftUI 的键盘自动避让，由 WebKit 内部滚动输入框到键盘上方。
+                // 否则双重避让会让第三方键盘（讯飞/搜狗）的工具条与键盘脱节、页面出现空隙。
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+        }
         .overlay(alignment: .bottom) {
             // 底部提示气泡（替代原状态行）
             if let t = toastText {
@@ -760,6 +783,24 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var quickStats = "尚未加载页面"
     @Published var unlockEnabled = true
 
+    @Published var pageTitle = ""
+    @Published var barUIColor: UIColor?
+
+    /// 标题栏背景：跟随网页主题色，无则用系统背景
+    var barBackground: Color {
+        guard let u = barUIColor else { return Color(.systemBackground) }
+        return Color(uiColor: u)
+    }
+
+    /// 标题栏文字/图标颜色：背景亮用深字，背景深用白字
+    var barForeground: Color {
+        guard let u = barUIColor else { return Color(.label) }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        u.getRed(&r, green: &g, blue: &b, alpha: &a)
+        let lum = 0.299 * r + 0.587 * g + 0.114 * b
+        return lum > 0.6 ? Color(.label) : .white
+    }
+
     private var observers: [NSKeyValueObservation] = []
     private var locationSettings: LocationSettings = .load()
 
@@ -890,6 +931,85 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
                 }
                 self.statusLine = "手机定位 \(String(format: "%.4f", lat)),\(String(format: "%.4f", lng))"
                 self.quickStats = "手机定位 \(String(format: "%.4f", lat)),\(String(format: "%.4f", lng))"
+            }
+        }
+    }
+
+    // MARK: 网页主题色提取（标题栏自动变色）
+
+    /// 取主 frame 的标题 + 主题色：meta theme-color > 页头元素背景 > body 背景
+    static let themeJS = """
+    (function(){
+      var t = document.title || '';
+      var c = null;
+      try {
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta && meta.content) { c = meta.content; }
+        if (!c) {
+          var sel = ['header','.navbar','.nav-bar','#header','nav','.top-bar'];
+          for (var i = 0; i < sel.length; i++) {
+            var el = document.querySelector(sel[i]);
+            if (el) {
+              var bg = getComputedStyle(el).backgroundColor;
+              if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') { c = bg; break; }
+            }
+          }
+        }
+        if (!c) {
+          var bg2 = getComputedStyle(document.body).backgroundColor;
+          if (bg2 && bg2 !== 'rgba(0, 0, 0, 0)' && bg2 !== 'transparent') c = bg2;
+        }
+      } catch(e) {}
+      return JSON.stringify({t: t, c: c});
+    })()
+    """
+
+    /// 解析 CSS 颜色字符串（#hex / rgb() / rgba() / 常用命名色）
+    static func parseCSSColor(_ raw: String) -> UIColor? {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if t.isEmpty || t == "transparent" || t.hasPrefix("rgba(0, 0, 0, 0") { return nil }
+        if t.hasPrefix("#") {
+            var hex = String(t.dropFirst())
+            if hex.count == 3 { hex = hex.map { "\($0)\($0)" }.joined() }
+            if hex.count == 8 { hex = String(hex.prefix(6)) }
+            guard hex.count == 6, let v = UInt64(hex, radix: 16) else { return nil }
+            return UIColor(red: CGFloat((v >> 16) & 0xFF) / 255,
+                           green: CGFloat((v >> 8) & 0xFF) / 255,
+                           blue: CGFloat(v & 0xFF) / 255, alpha: 1)
+        }
+        if t.hasPrefix("rgb") {
+            guard let re = try? NSRegularExpression(pattern: "[0-9]+\\.?[0-9]*") else { return nil }
+            let ns = t as NSString
+            let vals = re.matches(in: t, range: NSRange(location: 0, length: ns.length))
+                .compactMap { Double(ns.substring(with: $0.range)) }
+            if vals.count >= 3 {
+                func norm(_ x: Double) -> CGFloat { x <= 1.0 ? CGFloat(x) : CGFloat(x / 255.0) }
+                let a: CGFloat = vals.count >= 4 ? CGFloat(max(0, min(1, vals[3]))) : 1
+                return UIColor(red: norm(vals[0]), green: norm(vals[1]), blue: norm(vals[2]), alpha: a)
+            }
+        }
+        let named: [String: UIColor] = ["white": .white, "black": .black,
+                                        "red": .red, "blue": .blue, "green": .green,
+                                        "orange": .orange, "yellow": .yellow,
+                                        "gray": .gray, "grey": .gray]
+        return named[t]
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // 页面加载完成：提取标题与主题色，标题栏自动跟随变色
+        webView.evaluateJavaScript(Self.themeJS) { [weak self] res, _ in
+            guard let self = self else { return }
+            var title = ""
+            var colorStr: String?
+            if let s = res as? String,
+               let data = s.data(using: .utf8),
+               let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                title = dict["t"] as? String ?? ""
+                colorStr = dict["c"] as? String
+            }
+            DispatchQueue.main.async {
+                self.pageTitle = title
+                self.barUIColor = colorStr.flatMap(Self.parseCSSColor)
             }
         }
     }
