@@ -22,6 +22,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         # 版本号：每次构建都要递增。
-        # 当前 4.2 (22) —— 地址栏加前进/后退/刷新/跳转按钮；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
-        CURRENT_PROJECT_VERSION: "22"
-        MARKETING_VERSION: "4.2"
+        # 当前 4.3 (23) —— 地址栏增高、四按钮统一 34pt 宽、去清空按钮；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
+        CURRENT_PROJECT_VERSION: "23"
+        MARKETING_VERSION: "4.3"

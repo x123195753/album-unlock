@@ -982,28 +982,28 @@ struct AddressBar: View {
     @State private var text = ""
     @FocusState private var focused: Bool
 
+    /// 四个导航按钮统一风格：同尺寸、同字重，可用时主题蓝、不可用置灰
+    private func navButton(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(enabled ? Theme.accent : Color(.tertiaryLabel))
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             // 前部：后退 / 前进
-            Button {
+            navButton("chevron.left", enabled: core.canGoBack) {
                 core.webView.goBack()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(core.canGoBack ? Theme.accent : Color(.tertiaryLabel))
             }
-            .buttonStyle(.plain)
-            .disabled(!core.canGoBack)
-
-            Button {
+            navButton("chevron.right", enabled: core.canGoForward) {
                 core.webView.goForward()
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(core.canGoForward ? Theme.accent : Color(.tertiaryLabel))
             }
-            .buttonStyle(.plain)
-            .disabled(!core.canGoForward)
 
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .medium))
@@ -1016,44 +1016,21 @@ struct AddressBar: View {
                 .submitLabel(.go)
                 .focused($focused)
                 .onSubmit(go)
-            if !text.isEmpty {
-                Button {
-                    text = ""
-                    focused = true
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
 
             // 后部：刷新 / 跳转
-            Button {
+            navButton("arrow.clockwise", enabled: true) {
                 focused = false
                 core.webView.reload()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Theme.accent)
             }
-            .buttonStyle(.plain)
-
-            Button {
+            navButton("paperplane.fill", enabled: !text.isEmpty) {
                 go()
-            } label: {
-                Image(systemName: "paperplane.fill")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(text.isEmpty ? Color(.tertiaryLabel) : Theme.accent)
             }
-            .buttonStyle(.plain)
-            .disabled(text.isEmpty)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
         .background(Capsule().fill(Color(.secondarySystemBackground)))
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
         .onAppear { if !focused { text = core.currentURLString } }
         .onChange(of: core.currentURLString) { newValue in
             // 正在输入时不覆盖
