@@ -12,7 +12,7 @@ struct AlbumUnlockApp: App {
 
 // MARK: - 模拟定位设置
 
-struct LocationSettings: Equatable {
+struct LocationSettings: Codable, Equatable {
     var enabled: Bool
     var lat: Double
     var lng: Double
