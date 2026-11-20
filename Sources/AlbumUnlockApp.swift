@@ -556,33 +556,11 @@ struct ContentView: View {
     @State private var toastText: String?
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 标题栏：显示网页标题，背景自动跟随网页主题色
-            HStack(spacing: 8) {
-                Image(systemName: "safari")
-                    .font(.system(size: 14, weight: .medium))
-                Text(core.pageTitle.isEmpty ? "正在加载…" : core.pageTitle)
-                    .font(.system(size: 15, weight: .medium))
-                    .lineLimit(1)
-                Spacer()
-                Button {
-                    core.webView.reload()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 14, weight: .medium))
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background(core.barBackground)
-            .foregroundColor(core.barForeground)
-
-            BrowserView(core: core)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // 关键：关闭 SwiftUI 的键盘自动避让，由 WebKit 内部滚动输入框到键盘上方。
-                // 否则双重避让会让第三方键盘（讯飞/搜狗）的工具条与键盘脱节、页面出现空隙。
-                .ignoresSafeArea(.keyboard, edges: .bottom)
-        }
+        BrowserView(core: core)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 关键：关闭 SwiftUI 的键盘自动避让，由 WebKit 内部滚动输入框到键盘上方。
+            // 否则双重避让会让第三方键盘（讯飞/搜狗）的工具条与键盘脱节、页面出现空隙。
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         .overlay(alignment: .bottom) {
             // 底部提示气泡（替代原状态行）
             if let t = toastText {
@@ -677,7 +655,7 @@ struct ToolMenuView: View {
     var body: some View {
         NavigationView {
             List {
-                Section(header: Text("相册解锁"), footer: Text("关闭后页面将保留原始的拍照限制，刷新页面生效。")) {
+                Section(header: Text("相册解锁")) {
                     // 带彩色徽章的开关行（与其他工具行风格一致）
                     HStack(spacing: 12) {
                         Image(systemName: "lock.open.fill")
@@ -701,25 +679,25 @@ struct ToolMenuView: View {
                     }
                     .padding(.vertical, 2)
                     if core.unlockEnabled {
-                        toolRow("doc.text.magnifyingglass", color: .teal, title: "扫描文件框", subtitle: "查看上传框解锁状态") {
+                        toolRow("doc.text.magnifyingglass", color: .teal, title: "扫描文件框") {
                             dismiss()
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { core.scanFileInputs() }
                         }
                     }
                 }
                 Section(header: Text("定位")) {
-                    toolRow("location.viewfinder", color: .red, title: "定位设置", subtitle: "手机定位 / 手动坐标 / 地名搜索") {
+                    toolRow("location.viewfinder", color: .red, title: "定位设置") {
                         onOpenLocation()
                     }
                 }
                 Section(header: Text("页面")) {
-                    toolRow("arrow.clockwise", color: .blue, title: "重新载入", subtitle: "刷新当前页面") {
+                    toolRow("arrow.clockwise", color: .blue, title: "重新载入") {
                         dismiss()
                         core.webView.reload()
                     }
                 }
-                Section(header: Text("维护"), footer: Text("清除缓存会同时清除登录状态，需要重新登录门户。")) {
-                    toolRow("trash.fill", color: .pink, title: "清除所有缓存", subtitle: "将退出登录", destructive: true) {
+                Section(header: Text("维护")) {
+                    toolRow("trash.fill", color: .pink, title: "清除所有缓存", destructive: true) {
                         dismiss()
                         core.clearAllCache()
                     }
@@ -737,8 +715,8 @@ struct ToolMenuView: View {
         }
     }
 
-    /// 彩色徽章工具行（每个工具不同色彩，白色矢量图标）
-    private func toolRow(_ icon: String, color: Color, title: String, subtitle: String?,
+    /// 彩色徽章工具行（仅标题）
+    private func toolRow(_ icon: String, color: Color, title: String,
                          destructive: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
@@ -751,22 +729,15 @@ struct ToolMenuView: View {
                             .fill(LinearGradient(colors: [color, color.opacity(0.72)],
                                                  startPoint: .topLeading, endPoint: .bottomTrailing))
                     )
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundColor(destructive ? .red : .primary)
-                    if let subtitle = subtitle {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(destructive ? .red : .primary)
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(Color(.tertiaryLabel))
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, 4)
         }
     }
 }
