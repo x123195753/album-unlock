@@ -785,8 +785,14 @@ struct ContentView: View {
         ZStack {
             // 状态栏 / Home 指示条区域露出的底色（调色盘可改）
             Color(albumHex: core.navColor).ignoresSafeArea()
-            BrowserView(core: core)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 0) {
+                // 地址栏（工具箱可开关）：与状态栏色带连成一体
+                if core.addressBarEnabled {
+                    AddressBar(core: core)
+                }
+                BrowserView(core: core)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         // 淡蓝底上需要深色状态栏图标；同时 App 弹层统一浅色
         .preferredColorScheme(.light)
@@ -969,6 +975,56 @@ extension Color {
     }
 }
 
+// MARK: - 地址栏（工具箱可开关）
+
+struct AddressBar: View {
+    @ObservedObject var core: WebCore
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.secondary)
+            TextField("输入网址访问", text: $text)
+                .font(.system(size: 14))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .submitLabel(.go)
+                .focused($focused)
+                .onSubmit(go)
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                    focused = true
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Capsule().fill(Color(.secondarySystemBackground)))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .onAppear { if !focused { text = core.currentURLString } }
+        .onChange(of: core.currentURLString) { newValue in
+            // 正在输入时不覆盖
+            if !focused { text = newValue }
+        }
+    }
+
+    private func go() {
+        focused = false
+        core.navigate(to: text)
+    }
+}
+
 struct ToolMenuView: View {
     @ObservedObject var core: WebCore
     var onOpenLocation: () -> Void
@@ -1005,6 +1061,20 @@ struct ToolMenuView: View {
                     }
                 }
                 Section(header: Text("页面")) {
+                    // 地址栏开关
+                    HStack(spacing: 12) {
+                        badge("globe", color: .teal)
+                        Text("显示地址栏")
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { core.addressBarEnabled },
+                            set: { core.setAddressBar($0) }
+                        ))
+                        .labelsHidden()
+                        .tint(Theme.accent)
+                    }
+                    .padding(.vertical, 2)
                     // 网页美化开关（去边框 + 禁拖动）
                     HStack(spacing: 12) {
                         badge("paintbrush.fill", color: .purple)
@@ -1140,6 +1210,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     static let unlockKey = "albumUnlockEnabled"
     static let beautifyKey = "albumBeautifyEnabled"
     static let navColorKey = "albumNavColor"
+    static let addressBarKey = "albumAddressBarEnabled"
     /// 默认导航条/状态栏色：灰蓝（可在工具箱调色盘更换）
     static let defaultNavColor = "#F0F4F8"
 
@@ -1156,6 +1227,10 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     /// 状态栏条 + 网页导航条统一色（十六进制，工具箱调色盘可改）
     @Published var navColor: String = UserDefaults.standard.string(forKey: "albumNavColor")
         ?? WebCore.defaultNavColor
+    /// 地址栏显示开关（工具箱可切换）
+    @Published var addressBarEnabled = UserDefaults.standard.object(forKey: "albumAddressBarEnabled") as? Bool ?? true
+    /// 当前页面地址（供地址栏显示）
+    @Published var currentURLString = ""
 
     @Published var pageTitle = ""
     @Published var barUIColor: UIColor?
@@ -1310,6 +1385,22 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         webView.evaluateJavaScript("window.__albumSetNavColor && window.__albumSetNavColor('\(hex)')") { _, _ in }
     }
 
+    /// 切换地址栏显示：保存偏好（无需刷新页面）
+    func setAddressBar(_ on: Bool) {
+        addressBarEnabled = on
+        UserDefaults.standard.set(on, forKey: Self.addressBarKey)
+    }
+
+    /// 地址栏跳转：自动补协议头
+    func navigate(to raw: String) {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty, let _ = URL(string: s.contains("://") ? s : "http://" + s) else { return }
+        if !s.contains("://") { s = "http://" + s }
+        if let url = URL(string: s) {
+            webView.load(URLRequest(url: url))
+        }
+    }
+
     // MARK: 首次就绪提示（合并解锁与定位状态，只弹一条）
 
     private var didAnnounceReady = false
@@ -1457,6 +1548,10 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         // 每次页面开始加载时刷新手机定位（节流），确保坐标随人移动更新
         refreshDeviceLocation()
+        // 同步当前地址给地址栏
+        if let s = webView.url?.absoluteString {
+            DispatchQueue.main.async { self.currentURLString = s }
+        }
     }
 
     /// 手动再执行一次解锁脚本（幂等，用于动态页面兜底）
