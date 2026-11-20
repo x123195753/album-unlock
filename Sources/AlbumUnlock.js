@@ -118,40 +118,34 @@
     }
   } catch (e) {}
 
-  // 2.1b iframe 定位桥直连：子应用向 parent 发 locate-open 时，本地直接合成回执，
-  //      不依赖门户主框架的 wx 状态机（规避 5 秒超时）
-  if (window.parent !== window) {
-    try {
-      var origParentPost = window.parent.postMessage.bind(window.parent);
-      window.parent.postMessage = function (msg, targetOrigin, transfer) {
-        try {
-          if (msg && msg.type === 'locate-open') {
-            var f = window.__albumFakeLocation;
-            if (f && f.enabled) {
-              var payload = JSON.stringify({
-                errMsg: 'getLocation:ok',
-                latitude: Number(f.lat),
-                longitude: Number(f.lng),
-                accuracy: 30,
-                speed: 0
-              });
-              setTimeout(function () {
-                try {
-                  var ev = new MessageEvent('message', {
-                    data: { type: 'locate-result-open', data: payload }
-                  });
-                  window.dispatchEvent(ev);
-                } catch (e) {}
-              }, 100);
-              console.log('[相册解锁] 定位桥直连：已本地回执 ' + f.lat + ',' + f.lng);
-            }
-          }
-        } catch (e) {}
-        return origParentPost(msg, targetOrigin, transfer);
-      };
-      console.log('[相册解锁] iframe 定位桥直连已安装');
-    } catch (e) {}
-  }
+  // 2.1b iframe 定位桥直连（跨域安全版）：
+  // 子应用向 parent postMessage({type:'locate-open'})，5 秒内等不到
+  // {type:'locate-result-open', data:'<json字符串>'} 回执就报"请求超时"。
+  // window.parent 跨域无法 hook（v1.4 失败原因），改为在**每一层 frame**监听消息：
+  // 任一 frame 看到 locate-open 且模拟定位开启，直接向发送方 frame 回执模拟坐标。
+  // event.source.postMessage 是跨域允许的操作，不依赖门户主框架的 wx 状态机。
+  try {
+    window.addEventListener('message', function (ev) {
+      try {
+        var d = ev.data;
+        if (!d || d.type !== 'locate-open') return;
+        var f = window.__albumFakeLocation;
+        if (!f || !f.enabled) return;
+        var payload = JSON.stringify({
+          errMsg: 'getLocation:ok',
+          latitude: Number(f.lat),
+          longitude: Number(f.lng),
+          accuracy: 30,
+          speed: 0
+        });
+        if (ev.source) {
+          ev.source.postMessage({ type: 'locate-result-open', data: payload }, '*');
+          console.log('[相册解锁] 定位桥直连：已向子应用回执 ' + f.lat + ',' + f.lng);
+        }
+      } catch (e) {}
+    }, false);
+    console.log('[相册解锁] 定位桥直连监听已安装');
+  } catch (e) {}
 
   function isRealWeChat() {
     try { return typeof window.WeixinJSBridge !== 'undefined'; } catch (e) { return false; }
