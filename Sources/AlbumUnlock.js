@@ -118,6 +118,41 @@
     }
   } catch (e) {}
 
+  // 2.1b iframe 定位桥直连：子应用向 parent 发 locate-open 时，本地直接合成回执，
+  //      不依赖门户主框架的 wx 状态机（规避 5 秒超时）
+  if (window.parent !== window) {
+    try {
+      var origParentPost = window.parent.postMessage.bind(window.parent);
+      window.parent.postMessage = function (msg, targetOrigin, transfer) {
+        try {
+          if (msg && msg.type === 'locate-open') {
+            var f = window.__albumFakeLocation;
+            if (f && f.enabled) {
+              var payload = JSON.stringify({
+                errMsg: 'getLocation:ok',
+                latitude: Number(f.lat),
+                longitude: Number(f.lng),
+                accuracy: 30,
+                speed: 0
+              });
+              setTimeout(function () {
+                try {
+                  var ev = new MessageEvent('message', {
+                    data: { type: 'locate-result-open', data: payload }
+                  });
+                  window.dispatchEvent(ev);
+                } catch (e) {}
+              }, 100);
+              console.log('[相册解锁] 定位桥直连：已本地回执 ' + f.lat + ',' + f.lng);
+            }
+          }
+        } catch (e) {}
+        return origParentPost(msg, targetOrigin, transfer);
+      };
+      console.log('[相册解锁] iframe 定位桥直连已安装');
+    } catch (e) {}
+  }
+
   function isRealWeChat() {
     try { return typeof window.WeixinJSBridge !== 'undefined'; } catch (e) { return false; }
   }
