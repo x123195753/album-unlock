@@ -14,8 +14,8 @@ struct AlbumUnlockApp: App {
 // MARK: - 主题（统一淡色系，全 App 图标均使用 SF Symbols 矢量符号）
 
 enum Theme {
-    /// 统一淡蓝主题色
-    static let accent = Color(red: 0.45, green: 0.62, blue: 0.94)
+    /// 统一主色（恢复正常饱和度）
+    static let accent = Color(red: 0.25, green: 0.50, blue: 0.95)
 }
 
 // MARK: - 模拟定位设置
@@ -587,15 +587,7 @@ struct ContentView: View {
                         .foregroundColor(Color(.secondaryLabel))
                         .frame(width: 30, height: 30)
                 }
-
-                Button {
-                    goToURL()
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundColor(Theme.accent)
-                        .frame(width: 34, height: 34)
-                }
+                .padding(.trailing, 6)
             }
             .padding(.leading, 6)
             .padding(.trailing, 4)
@@ -622,17 +614,22 @@ struct ContentView: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            // 悬浮工具按钮（玻璃质感，淡蓝色图标）
+            // 悬浮工具按钮（饱和渐变 + 白色图标）
             Button {
                 showToolSheet = true
             } label: {
                 Image(systemName: "wrench.and.screwdriver.fill")
                     .font(.system(size: 21))
-                    .foregroundColor(Theme.accent)
+                    .foregroundColor(.white)
                     .frame(width: 56, height: 56)
-                    .background(Circle().fill(.ultraThinMaterial))
-                    .overlay(Circle().stroke(Color.primary.opacity(0.08)))
-                    .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+                    .background(
+                        Circle().fill(
+                            LinearGradient(colors: [Color(red: 0.30, green: 0.52, blue: 0.98),
+                                                    Color(red: 0.18, green: 0.40, blue: 0.92)],
+                                           startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
+                    )
+                    .shadow(color: Color(red: 0.25, green: 0.47, blue: 0.95).opacity(0.45), radius: 9, x: 0, y: 4)
             }
             .padding(.trailing, 20)
             .padding(.bottom, 44)
@@ -728,38 +725,52 @@ struct ToolMenuView: View {
         NavigationView {
             List {
                 Section(header: Text("相册解锁"), footer: Text("关闭后页面将保留原始的拍照限制，刷新页面生效。")) {
-                    Toggle(isOn: Binding(
-                        get: { core.unlockEnabled },
-                        set: { core.setUnlockEnabled($0) }
-                    )) {
-                        Label("自动解锁相册", systemImage: "lock.open.fill")
+                    // 带彩色徽章的开关行（与其他工具行风格一致）
+                    HStack(spacing: 12) {
+                        Image(systemName: "lock.open.fill")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(width: 32, height: 32)
+                            .background(
+                                RoundedRectangle(cornerRadius: 9)
+                                    .fill(LinearGradient(colors: [.orange, .orange.opacity(0.75)],
+                                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                            )
+                        Text("自动解锁相册")
                             .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { core.unlockEnabled },
+                            set: { core.setUnlockEnabled($0) }
+                        ))
+                        .labelsHidden()
+                        .tint(Theme.accent)
                     }
-                    .tint(Theme.accent)
+                    .padding(.vertical, 2)
                     if core.unlockEnabled {
-                        toolRow("doc.text.magnifyingglass", title: "扫描文件框", subtitle: "查看上传框解锁状态") {
+                        toolRow("doc.text.magnifyingglass", color: .teal, title: "扫描文件框", subtitle: "查看上传框解锁状态") {
                             dismiss()
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { core.scanFileInputs() }
                         }
                     }
                 }
                 Section(header: Text("定位")) {
-                    toolRow("location.fill", title: "定位设置", subtitle: "手机定位 / 手动坐标 / 地名搜索") {
+                    toolRow("location.fill", color: .red, title: "定位设置", subtitle: "手机定位 / 手动坐标 / 地名搜索") {
                         onOpenLocation()
                     }
                 }
                 Section(header: Text("排查")) {
-                    toolRow("antenna.radiowaves.left.and.right", title: "调试", subtitle: "导出凭据与子应用地址") {
+                    toolRow("antenna.radiowaves.left.and.right", color: .purple, title: "调试", subtitle: "导出凭据与子应用地址") {
                         dismiss()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { core.dumpDebugInfo() }
                     }
-                    toolRow("arrow.clockwise", title: "重新加载页面", subtitle: nil) {
+                    toolRow("arrow.clockwise", color: .blue, title: "重新加载页面", subtitle: nil) {
                         dismiss()
                         core.webView.reload()
                     }
                 }
                 Section(header: Text("维护"), footer: Text("清除缓存会同时清除登录状态，需要重新登录门户。")) {
-                    toolRow("trash.fill", title: "清除所有缓存", subtitle: "将退出登录", destructive: true) {
+                    toolRow("trash.fill", color: .pink, title: "清除所有缓存", subtitle: "将退出登录", destructive: true) {
                         dismiss()
                         core.clearAllCache()
                     }
@@ -782,18 +793,19 @@ struct ToolMenuView: View {
         }
     }
 
-    /// 统一风格工具行：SF Symbols 矢量图标 + 淡蓝主题底色
-    private func toolRow(_ icon: String, title: String, subtitle: String?,
+    /// 彩色徽章工具行（每个工具不同色彩，白色矢量图标）
+    private func toolRow(_ icon: String, color: Color, title: String, subtitle: String?,
                          destructive: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(destructive ? .red : Theme.accent)
+                    .foregroundColor(.white)
                     .frame(width: 32, height: 32)
                     .background(
                         RoundedRectangle(cornerRadius: 9)
-                            .fill(destructive ? Color.red.opacity(0.12) : Theme.accent.opacity(0.13))
+                            .fill(LinearGradient(colors: [color, color.opacity(0.72)],
+                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
                     )
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
