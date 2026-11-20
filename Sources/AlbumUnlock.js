@@ -29,10 +29,15 @@
     '.app-card,.app-view,.content-box,.main-box{border:0 !important;',
     'outline:none !important;box-shadow:none !important;}',
 
-    /* 页头只去边框去阴影，不改背景色 */
+    /* 网页导航条：原为黑底，改为白底深字与页面协调 */
+    '.MuiAppBar-root,.MuiAppBar-positionSticky,.MuiAppBar-positionFixed,.MuiToolbar-root,',
     'header,#header,.header,.page-header,.app-header,.titlebar,.navbar,.nav-bar,',
     '.uni-page-head,.van-nav-bar,.mint-header,.mui-bar-nav,.top-bar{',
-    'border:0 !important;box-shadow:none !important;outline:none !important;}',
+    'background:#FFFFFF !important;background-image:none !important;',
+    'border:0 !important;box-shadow:0 1px 0 rgba(0,0,0,.06) !important;}',
+    '.MuiAppBar-root *,.MuiToolbar-root *,header *,#header *,.header *,.page-header *,',
+    '.app-header *,.titlebar *,.navbar *,.nav-bar *,.top-bar *{',
+    'color:#1C1C1E !important;fill:#1C1C1E !important;text-shadow:none !important;}',
 
     /* 输入框只去外发光/描边，不改配色 */
     'input,textarea,select{outline:none !important;}'
