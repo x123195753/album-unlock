@@ -781,13 +781,10 @@ struct ContentView: View {
     @State private var locationSettings: LocationSettings = .load()
     @State private var toast: ToastMessage?
 
-    /// 状态栏区底色：淡蓝 #D6E8FA（与网页导航条同色，连成一整条色带）
-    static let statusBarBlue = Color(red: 0.84, green: 0.91, blue: 0.98)
-
     var body: some View {
         ZStack {
-            // 状态栏 / Home 指示条区域露出的底色
-            Self.statusBarBlue.ignoresSafeArea()
+            // 状态栏 / Home 指示条区域露出的底色（调色盘可改）
+            Color(albumHex: core.navColor).ignoresSafeArea()
             BrowserView(core: core)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -927,6 +924,51 @@ struct ToastBubble: View {
 
 // MARK: - 悬浮工具菜单
 
+// MARK: - 调色盘（状态栏 / 网页导航条统一色）
+
+/// 预设色块：点选即时预览
+struct PaletteOption: Identifiable {
+    let hex: String
+    let name: String
+    var id: String { hex }
+    static let presets: [PaletteOption] = [
+        PaletteOption(hex: "#F0F4F8", name: "灰蓝"),
+        PaletteOption(hex: "#D6E8FA", name: "淡蓝"),
+        PaletteOption(hex: "#CFE3F7", name: "天蓝"),
+        PaletteOption(hex: "#DDF2E7", name: "薄荷绿"),
+        PaletteOption(hex: "#FAE4EA", name: "樱粉"),
+        PaletteOption(hex: "#EAE3F8", name: "雾紫"),
+        PaletteOption(hex: "#FCEBD8", name: "杏橙"),
+        PaletteOption(hex: "#FAF3D9", name: "奶油黄"),
+        PaletteOption(hex: "#FFFFFF", name: "纯白")
+    ]
+}
+
+extension Color {
+    /// "#RRGGBB" → Color（非法输入回退灰色）
+    init(albumHex hex: String) {
+        let h = hex.trimmingCharacters(in: .alphanumerics.inverted)
+        var v: UInt64 = 0
+        Scanner(string: h).scanHexInt64(&v)
+        if h.count == 6 {
+            self.init(red: Double((v >> 16) & 0xFF) / 255,
+                      green: Double((v >> 8) & 0xFF) / 255,
+                      blue: Double(v & 0xFF) / 255)
+        } else {
+            self.init(.systemGray5)
+        }
+    }
+
+    /// Color → "#RRGGBB"（供自定义取色器写回）
+    var albumHex: String {
+        let ui = UIColor(self)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0
+        ui.getRed(&r, green: &g, blue: &b, alpha: nil)
+        return String(format: "#%02X%02X%02X",
+                      Int(round(r * 255)), Int(round(g * 255)), Int(round(b * 255)))
+    }
+}
+
 struct ToolMenuView: View {
     @ObservedObject var core: WebCore
     var onOpenLocation: () -> Void
@@ -981,6 +1023,50 @@ struct ToolMenuView: View {
                         dismiss()
                         core.webView.reload()
                     }
+                }
+                Section(header: Text("外观 · 状态栏颜色"), footer: Text("点色块立即预览：状态栏与网页导航条同步变色。右侧取色器可选任意颜色。")) {
+                    // 调色盘：点色块即时预览
+                    HStack(spacing: 12) {
+                        badge("paintpalette.fill", color: .indigo)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(PaletteOption.presets) { p in
+                                    Button {
+                                        core.setNavColor(p.hex)
+                                    } label: {
+                                        Circle()
+                                            .fill(Color(albumHex: p.hex))
+                                            .frame(width: 30, height: 30)
+                                            .overlay(
+                                                Circle().stroke(
+                                                    core.navColor == p.hex ? Color.primary : Color.primary.opacity(0.12),
+                                                    lineWidth: core.navColor == p.hex ? 2.5 : 1
+                                                )
+                                            )
+                                            .overlay(alignment: .center) {
+                                                if core.navColor == p.hex {
+                                                    Image(systemName: "checkmark")
+                                                        .font(.system(size: 11, weight: .bold))
+                                                        .foregroundColor(.primary.opacity(0.75))
+                                                }
+                                            }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(p.name)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 2)
+                        }
+                        // 自定义取色器
+                        ColorPicker("", selection: Binding(
+                            get: { Color(albumHex: core.navColor) },
+                            set: { core.setNavColor($0.albumHex) }
+                        ), supportsOpacity: false)
+                        .labelsHidden()
+                        .frame(width: 32, height: 32)
+                    }
+                    .padding(.vertical, 2)
                 }
                 Section(header: Text("维护")) {
                     toolRow("trash.fill", color: .pink, title: "清除所有缓存", destructive: true) {
@@ -1053,6 +1139,9 @@ struct ToolMenuView: View {
 final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     static let unlockKey = "albumUnlockEnabled"
     static let beautifyKey = "albumBeautifyEnabled"
+    static let navColorKey = "albumNavColor"
+    /// 默认导航条/状态栏色：灰蓝（可在工具箱调色盘更换）
+    static let defaultNavColor = "#F0F4F8"
 
     let webView: WKWebView
     @Published var canGoBack = false
@@ -1064,6 +1153,9 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var unlockEnabled = true
     /// 网页美化（去边框、禁拖动，不改动页面配色）
     @Published var beautifyEnabled = true
+    /// 状态栏条 + 网页导航条统一色（十六进制，工具箱调色盘可改）
+    @Published var navColor: String = UserDefaults.standard.string(forKey: "albumNavColor")
+        ?? WebCore.defaultNavColor
 
     @Published var pageTitle = ""
     @Published var barUIColor: UIColor?
@@ -1086,10 +1178,11 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     private var observers: [NSKeyValueObservation] = []
     private var locationSettings: LocationSettings = .load()
 
-    /// 预置脚本：解锁开关 + 网页美化开关 + 定位模拟参数
+    /// 预置脚本：解锁开关 + 网页美化开关 + 导航条颜色 + 定位模拟参数
     private var combinedPrelude: String {
         "window.__albumUnlockEnabled = \(unlockEnabled); " +
         "window.__albumBeautify = \(beautifyEnabled); " +
+        "window.__albumNavColor = '\(navColor)'; " +
         locationSettings.preludeScript
     }
 
@@ -1099,6 +1192,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         let settings = LocationSettings.load()
         let preludeSource = "window.__albumUnlockEnabled = \(UserDefaults.standard.object(forKey: Self.unlockKey) as? Bool ?? true); " +
             "window.__albumBeautify = \(UserDefaults.standard.object(forKey: Self.beautifyKey) as? Bool ?? true); " +
+            "window.__albumNavColor = '\(navColor)'; " +
             settings.preludeScript
         // 预置脚本：先写入解锁开关与定位模拟参数（所有 frame、文档开始时）
         let prelude = WKUserScript(
@@ -1206,6 +1300,14 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         rebuildScripts()
         webView.reload()
         showToast(on ? "网页美化已开启" : "网页美化已关闭", kind: on ? .success : .info)
+    }
+
+    /// 调色盘换色：状态栏条 + 网页导航条即时变色，无需刷新
+    func setNavColor(_ hex: String) {
+        navColor = hex
+        UserDefaults.standard.set(hex, forKey: Self.navColorKey)
+        rebuildScripts()
+        webView.evaluateJavaScript("window.__albumSetNavColor && window.__albumSetNavColor('\(hex)')") { _, _ in }
     }
 
     // MARK: 首次就绪提示（合并解锁与定位状态，只弹一条）

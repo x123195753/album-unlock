@@ -17,7 +17,12 @@
   // 原生预置 window.__albumBeautify（工具箱可开关）
   var BEAUTIFY = window.__albumBeautify !== false;
 
-  var THEME_CSS = [
+  // 导航条颜色：可由工具箱调色盘动态修改（原生预置 window.__albumNavColor）
+  var NAV_DEFAULT = '#F0F4F8';
+
+  function buildCSS() {
+    var nav = window.__albumNavColor || NAV_DEFAULT;
+    return [
     /* 禁止拖动/回弹：限制只允许竖向滑动，禁止横向拖拽 */
     'html,body{overscroll-behavior:none !important;overflow-x:hidden !important;',
     'max-width:100% !important;touch-action:pan-y !important;',
@@ -29,11 +34,11 @@
     '.app-card,.app-view,.content-box,.main-box{border:0 !important;',
     'outline:none !important;box-shadow:none !important;}',
 
-    /* 网页导航条：原为黑底，改为白底深字与页面协调 */
+    /* 网页导航条：底色由调色盘控制，深色文字 */
     '.MuiAppBar-root,.MuiAppBar-positionSticky,.MuiAppBar-positionFixed,.MuiToolbar-root,',
     'header,#header,.header,.page-header,.app-header,.titlebar,.navbar,.nav-bar,',
     '.uni-page-head,.van-nav-bar,.mint-header,.mui-bar-nav,.top-bar{',
-    'background:#D6E8FA !important;background-image:none !important;',
+    'background:' + nav + ' !important;background-image:none !important;',
     'border:0 !important;box-shadow:none !important;}',
     '.MuiAppBar-root *,.MuiToolbar-root *,header *,#header *,.header *,.page-header *,',
     '.app-header *,.titlebar *,.navbar *,.nav-bar *,.top-bar *{',
@@ -41,7 +46,8 @@
 
     /* 输入框只去外发光/描边，不改配色 */
     'input,textarea,select{outline:none !important;}'
-  ].join('');
+    ].join('');
+  }
 
   function installTheme() {
     if (!BEAUTIFY) {
@@ -50,13 +56,20 @@
       return;
     }
     try {
-      if (document.getElementById('__album_theme')) return;
-      var st = document.createElement('style');
-      st.id = '__album_theme';
-      st.textContent = THEME_CSS;
-      (document.head || document.documentElement).appendChild(st);
+      var st = document.getElementById('__album_theme');
+      if (!st) {
+        st = document.createElement('style');
+        st.id = '__album_theme';
+        (document.head || document.documentElement).appendChild(st);
+      }
+      st.textContent = buildCSS();
     } catch (e) {}
   }
+  // 供原生调色盘调用：换色即时生效，无需刷新页面
+  window.__albumSetNavColor = function (hex) {
+    window.__albumNavColor = hex;
+    installTheme();
+  };
   installTheme();
   document.addEventListener('DOMContentLoaded', installTheme);
   // 单页应用切换页面时 head 可能重建，兜底补回
