@@ -150,6 +150,8 @@ struct PresetNameEditor: View {
             }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+            .preferredColorScheme(.light)
+            .tint(Theme.accent)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
@@ -396,6 +398,8 @@ struct LocationSettingsView: View {
             }
             .navigationTitle("定位设置")
             .navigationBarTitleDisplayMode(.inline)
+            .preferredColorScheme(.light)
+            .tint(Theme.accent)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
@@ -996,6 +1000,9 @@ struct ToolMenuView: View {
             .listStyle(.insetGrouped)
             .navigationTitle("工具箱")
             .navigationBarTitleDisplayMode(.inline)
+            // 与浅色网页保持一致：弹层固定浅色（深色模式下不再发黑）
+            .preferredColorScheme(.light)
+            .tint(Theme.accent)
         }
     }
 

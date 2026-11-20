@@ -22,6 +22,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         # 版本号：每次构建都要递增。
-        # 当前 3.4 (14) —— 去边框收窄美化 / iframe 拖动锁；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
-        CURRENT_PROJECT_VERSION: "14"
-        MARKETING_VERSION: "3.4"
+        # 当前 3.5 (15) —— 弹层固定浅色（导航条白底）；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
+        CURRENT_PROJECT_VERSION: "15"
+        MARKETING_VERSION: "3.5"
