@@ -177,6 +177,7 @@ struct ContentView: View {
                 Button(locationSettings.enabled ? "📍 模拟定位:开" : "📍 模拟定位:关") {
                     showLocationSheet = true
                 }
+                Button("📤 调试") { core.dumpDebugInfo() }
                 Spacer()
                 Text(core.statusLine)
                     .font(.caption2)
@@ -310,6 +311,31 @@ final class WebCore: NSObject, ObservableObject {
         let alert = UIAlertController(title: "页面加载出错", message: error.localizedDescription, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "好的", style: .default))
         UIApplication.topViewController()?.present(alert, animated: true)
+    }
+
+    /// 导出登录凭据与 iframe 子应用地址，用于远程排查
+    func dumpDebugInfo() {
+        let js = """
+        (function(){
+          var out = [];
+          try {
+            var ud = localStorage.getItem('UserData');
+            out.push('USERDATA=' + (ud || 'none'));
+          } catch(e) { out.push('USERDATA_ERR=' + e); }
+          try {
+            var ifr = document.querySelectorAll('iframe');
+            for (var i = 0; i < ifr.length; i++) out.push('IFRAME' + i + '=' + ifr[i].src);
+          } catch(e) { out.push('IFRAME_ERR=' + e); }
+          out.push('TOPURL=' + location.href);
+          return out.join('\\n');
+        })()
+        """
+        webView.evaluateJavaScript(js) { result, _ in
+            let text = (result as? String) ?? "获取失败"
+            let alert = UIAlertController(title: "调试信息（截图发我）", message: text, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "好的", style: .default))
+            UIApplication.topViewController()?.present(alert, animated: true)
+        }
     }
 
     /// 列出页面上所有 file input 状态，方便排查
