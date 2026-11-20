@@ -12,41 +12,30 @@
   // 提示统一由原生底部气泡渲染（毛玻璃胶囊 + 语义图标），网页内不再自绘，
   // 避免刚打开时同时出现网页 toast 与原生气泡两种风格。
 
-  /* ============ 〇、浅色美化 + 禁止页面拖动 ============ */
+  /* ============ 〇、去边框 + 禁止页面拖动（不强行改色） ============ */
 
   // 原生预置 window.__albumBeautify（工具箱可开关）
   var BEAUTIFY = window.__albumBeautify !== false;
 
   var THEME_CSS = [
-    /* 底色统一浅灰、禁止横向拖动与回弹 */
-    'html,body{background-color:#F4F6F9 !important;color:#1C1C1E !important;',
-    'overscroll-behavior:none !important;overflow-x:hidden !important;',
+    /* 禁止拖动/回弹：限制只允许竖向滑动，禁止横向拖拽 */
+    'html,body{overscroll-behavior:none !important;overflow-x:hidden !important;',
+    'max-width:100% !important;touch-action:pan-y !important;',
     '-webkit-tap-highlight-color:transparent;}',
 
-    /* 页头：白底、无边框、极淡分隔线 */
+    /* iframe 及四周容器边框线条去除 */
+    'iframe{border:0 !important;outline:none !important;box-shadow:none !important;}',
+    '.iframe-box,.iframe-wrap,.iframe-wrapper,.app-frame,.app-box,.app-item,',
+    '.app-card,.app-view,.content-box,.main-box{border:0 !important;',
+    'outline:none !important;box-shadow:none !important;}',
+
+    /* 页头只去边框去阴影，不改背景色 */
     'header,#header,.header,.page-header,.app-header,.titlebar,.navbar,.nav-bar,',
-    '.navbar-fixed-top,.uni-page-head,.van-nav-bar,.mint-header,.weui-navbar,',
-    '.mui-bar-nav,.aui-bar,.am-navbar,.top-bar{background:#FFFFFF !important;',
-    'background-image:none !important;border:0 !important;box-shadow:0 1px 0 rgba(0,0,0,.05) !important;}',
+    '.uni-page-head,.van-nav-bar,.mint-header,.mui-bar-nav,.top-bar{',
+    'border:0 !important;box-shadow:none !important;outline:none !important;}',
 
-    /* 页头内的文字与图标转深色 */
-    'header *,#header *,.header *,.page-header *,.app-header *,.titlebar *,',
-    '.navbar *,.nav-bar *,.uni-page-head *,.van-nav-bar *,.mint-header *,',
-    '.weui-navbar *,.mui-bar-nav *,.aui-bar *,.am-navbar *,.top-bar *{',
-    'color:#1C1C1E !important;fill:#1C1C1E !important;text-shadow:none !important;}',
-
-    /* 卡片 / 列表 / 单元格：去边框、去阴影、纯白 */
-    '.card,.panel,.van-cell,.mint-cell,.weui-cell,.aui-card,.am-list-item,',
-    '.uni-card,.uni-list,.uni-list-item,.list-card,.cell,.list-item{',
-    'border:0 !important;box-shadow:none !important;background-color:#FFFFFF !important;}',
-
-    /* 分割线更淡 */
-    'hr,.divider,.van-cell::after,.mint-cell::after,.uni-list-item::after{',
-    'border-color:rgba(0,0,0,.06) !important;}',
-
-    /* 输入框浅底浅边 */
-    'input,textarea,select{background-color:#FFFFFF !important;',
-    'border-color:rgba(0,0,0,.08) !important;color:#1C1C1E !important;}'
+    /* 输入框只去外发光/描边，不改配色 */
+    'input,textarea,select{outline:none !important;}'
   ].join('');
 
   function installTheme() {
@@ -67,6 +56,27 @@
   document.addEventListener('DOMContentLoaded', installTheme);
   // 单页应用切换页面时 head 可能重建，兜底补回
   setInterval(installTheme, 3000);
+
+  // 拖动锁：横向拖动直接拦截（竖向滑动不受影响），每个 frame 都会注入本脚本
+  function lockDrag(doc) {
+    try {
+      var sx = 0, sy = 0, tracking = false;
+      doc.addEventListener('touchstart', function (e) {
+        if (e.touches.length === 1) {
+          sx = e.touches[0].clientX; sy = e.touches[0].clientY; tracking = true;
+        }
+      }, { passive: true });
+      doc.addEventListener('touchmove', function (e) {
+        if (!tracking || e.touches.length !== 1) return;
+        var dx = Math.abs(e.touches[0].clientX - sx);
+        var dy = Math.abs(e.touches[0].clientY - sy);
+        if (dx > dy && dx > 8) e.preventDefault();
+      }, { passive: false });
+      doc.addEventListener('touchend', function () { tracking = false; }, { passive: true });
+    } catch (err) {}
+  }
+  lockDrag(document);
+  document.addEventListener('DOMContentLoaded', function () { lockDrag(document); });
 
   /* ============ 一、相册解锁 ============ */
 

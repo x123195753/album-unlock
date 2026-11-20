@@ -954,10 +954,10 @@ struct ToolMenuView: View {
                     }
                 }
                 Section(header: Text("页面")) {
-                    // 网页浅色美化开关
+                    // 网页美化开关（去边框 + 禁拖动）
                     HStack(spacing: 12) {
                         badge("paintbrush.fill", color: .purple)
-                        Text("网页美化（浅色）")
+                        Text("网页美化（去边框）")
                             .font(.subheadline.weight(.medium))
                         Spacer()
                         Toggle("", isOn: Binding(
@@ -1053,7 +1053,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var toast: ToastMessage?
     @Published var quickStats = "尚未加载页面"
     @Published var unlockEnabled = true
-    /// 网页浅色美化（去边框、页头浅色）
+    /// 网页美化（去边框、禁拖动，不改动页面配色）
     @Published var beautifyEnabled = true
 
     @Published var pageTitle = ""
@@ -1190,7 +1190,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         showToast(on ? "相册解锁已开启" : "相册解锁已关闭", kind: on ? .success : .info)
     }
 
-    /// 切换网页美化（浅色去边框）：保存、重建注入脚本并刷新页面立即生效
+    /// 切换网页美化（去边框）：保存、重建注入脚本并刷新页面立即生效
     func setBeautifyEnabled(_ on: Bool) {
         beautifyEnabled = on
         UserDefaults.standard.set(on, forKey: Self.beautifyKey)
