@@ -84,6 +84,13 @@ struct LocationSettingsView: View {
     @State private var fetching = false
     @State private var errorText = ""
 
+    // 地名搜索状态
+    @State private var searchText = ""
+    @State private var searchResults: [PlaceResult] = []
+    @State private var searching = false
+    @State private var searchHint = ""
+    @State private var pickedPlace = ""
+
     // 常用预设（GCJ-02 坐标）
     private let presets: [(name: String, lat: Double, lng: Double)] = [
         ("苏州（沙钢本地）", 31.2989, 120.5853),
@@ -138,6 +145,16 @@ struct LocationSettingsView: View {
 
                     if mode == "manual" {
                         Toggle("启用定位模拟", isOn: $enabled)
+                        if !pickedPlace.isEmpty {
+                            HStack(spacing: 6) {
+                                Image(systemName: "mappin.circle.fill")
+                                    .foregroundColor(.red)
+                                Text(pickedPlace)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(2)
+                            }
+                        }
                         HStack {
                             Text("纬度").frame(width: 44, alignment: .leading)
                             TextField("31.298900", text: $latText)
@@ -148,7 +165,7 @@ struct LocationSettingsView: View {
                             TextField("120.585300", text: $lngText)
                                 .keyboardType(.decimalPad)
                         }
-                        Text("坐标请使用 GCJ-02 火星坐标系（高德/腾讯地图拾取坐标器可获取），否则页面上地图会偏移约 500 米。")
+                        Text("坐标已自动转换为 GCJ-02 火星坐标系，页面地图不会偏移。")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -171,12 +188,55 @@ struct LocationSettingsView: View {
                                 latText = String(format: "%.6f", p.lat)
                                 lngText = String(format: "%.6f", p.lng)
                                 enabled = true
+                                pickedPlace = p.name
                             } label: {
                                 HStack {
-                                    Text(p.name)
+                                    Label(p.name, systemImage: "star.fill")
+                                        .labelStyle(TitleAndIconLabelStyle())
                                     Spacer()
                                     Text("\(String(format: "%.4f", p.lat)), \(String(format: "%.4f", p.lng))")
                                         .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                    }
+
+                    // 手动搜索位置：输入地名，自动查出坐标并转为火星坐标
+                    Section(header: Text("搜索位置"), footer: Text("输入地名搜索，点选结果即自动填入坐标。支持城市、街道、小区、地标，如「张家港 锦丰镇」。")) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.secondary)
+                            TextField("输入地名关键词", text: $searchText)
+                                .submitLabel(.search)
+                                .onSubmit { runPlaceSearch() }
+                            if searching {
+                                ProgressView()
+                            } else {
+                                Button {
+                                    runPlaceSearch()
+                                } label: {
+                                    Text("搜索")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                            }
+                        }
+                        if !searchHint.isEmpty {
+                            Text(searchHint)
+                                .font(.caption)
+                                .foregroundColor(searchResults.isEmpty ? .secondary : .secondary)
+                        }
+                        ForEach(searchResults) { r in
+                            Button {
+                                pickPlace(r)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(r.name)
+                                        .font(.subheadline)
+                                        .foregroundColor(.primary)
+                                        .multilineTextAlignment(.leading)
+                                    Text("GCJ-02: \(r.coordText)")
+                                        .font(.caption2)
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -196,6 +256,38 @@ struct LocationSettingsView: View {
                 }
             }
         }
+    }
+
+    /// 执行地名搜索
+    private func runPlaceSearch() {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return }
+        searching = true
+        searchHint = ""
+        searchResults = []
+        PlaceSearch.search(q) { results, err in
+            DispatchQueue.main.async {
+                searching = false
+                if let err = err {
+                    searchHint = err
+                    return
+                }
+                searchResults = results
+                if results.isEmpty {
+                    searchHint = "未找到相关地点，试试加上城市名，如「张家港 沙钢」"
+                }
+            }
+        }
+    }
+
+    /// 点选搜索结果：填入坐标（已是 GCJ-02）
+    private func pickPlace(_ r: PlaceResult) {
+        latText = String(format: "%.6f", r.lat)
+        lngText = String(format: "%.6f", r.lng)
+        enabled = true
+        pickedPlace = r.name
+        searchResults = []
+        searchHint = "已选用：\(r.name)"
     }
 
     private func fetchDevice() {
@@ -249,6 +341,87 @@ struct LocationSettingsView: View {
     }
 }
 
+// MARK: - 地名搜索（OpenStreetMap Nominatim + Photon 双源，免密钥）
+
+struct PlaceResult: Identifiable {
+    let id = UUID()
+    let name: String
+    let lat: Double // 已转 GCJ-02
+    let lng: Double
+    var coordText: String { String(format: "%.4f, %.4f", lat, lng) }
+}
+
+enum PlaceSearch {
+    /// 搜索地名，返回 GCJ-02 坐标结果；err 为人类可读提示
+    static func search(_ query: String, completion: @escaping ([PlaceResult], String?) -> Void) {
+        let qs = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        let sources: [URL] = [
+            URL(string: "https://nominatim.openstreetmap.org/search?q=\(qs)&format=json&limit=8&accept-language=zh-CN")!,
+            URL(string: "https://photon.komoot.io/api/?q=\(qs)&limit=8")!
+        ]
+        fetch(sources, 0, completion)
+    }
+
+    private static func fetch(_ sources: [URL], _ idx: Int, _ completion: @escaping ([PlaceResult], String?) -> Void) {
+        guard idx < sources.count else {
+            completion([], "搜索服务暂时不可用，请检查网络后重试")
+            return
+        }
+        var req = URLRequest(url: sources[idx])
+        req.timeoutInterval = 12
+        req.setValue("AlbumUnlockApp/2.0", forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: req) { data, _, error in
+            guard let data = data, error == nil,
+                  let obj = try? JSONSerialization.jsonObject(with: data) else {
+                fetch(sources, idx + 1, completion)
+                return
+            }
+            let results = parse(obj)
+            if results.isEmpty {
+                fetch(sources, idx + 1, completion)
+            } else {
+                completion(results, nil)
+            }
+        }.resume()
+    }
+
+    private static func parse(_ obj: Any) -> [PlaceResult] {
+        var out: [PlaceResult] = []
+        if let arr = obj as? [[String: Any]] {
+            // Nominatim 格式：[{lat: "..", lon: "..", display_name: ".."}]
+            for item in arr {
+                guard let latStr = item["lat"] as? String, let lat = Double(latStr),
+                      let lonStr = item["lon"] as? String, let lng = Double(lonStr),
+                      let name = item["display_name"] as? String else { continue }
+                append(&out, name: name, wgsLat: lat, wgsLng: lng)
+            }
+        } else if let dict = obj as? [String: Any],
+                  let features = dict["features"] as? [[String: Any]] {
+            // Photon 格式：{features: [{geometry: {coordinates: [lon, lat]}, properties: {...}}]}
+            for f in features {
+                guard let geo = f["geometry"] as? [String: Any],
+                      let coords = geo["coordinates"] as? [Any], coords.count >= 2,
+                      let lng = coords[0] as? Double, let lat = coords[1] as? Double else { continue }
+                let p = f["properties"] as? [String: Any] ?? [:]
+                let parts = [p["name"], p["street"], p["district"], p["city"], p["county"], p["state"], p["country"]]
+                    .compactMap { $0 as? String }
+                    .filter { !$0.isEmpty }
+                // 去重相邻重复段
+                var deduped: [String] = []
+                for part in parts where deduped.last != part { deduped.append(part) }
+                let name = deduped.isEmpty ? "未知地点" : deduped.joined(separator: " ")
+                append(&out, name: name, wgsLat: lat, wgsLng: lng)
+            }
+        }
+        return out
+    }
+
+    private static func append(_ out: inout [PlaceResult], name: String, wgsLat: Double, wgsLng: Double) {
+        let gcj = DeviceLocator.wgs84ToGcj02(lat: wgsLat, lng: wgsLng)
+        out.append(PlaceResult(name: name, lat: gcj.lat, lng: gcj.lng))
+    }
+}
+
 // MARK: - 主界面
 
 struct ContentView: View {
@@ -260,80 +433,88 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部地址栏
-            HStack(spacing: 8) {
-                Button {
-                    core.webView.goBack()
-                } label: {
-                    Image(systemName: "chevron.left").font(.system(size: 17, weight: .semibold))
-                }
-                .disabled(!core.canGoBack)
-                .frame(width: 28)
+            // 顶部导航栏（渐变背景 + 胶囊地址栏）
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    navIcon("chevron.left", active: core.canGoBack) { core.webView.goBack() }
+                    navIcon("chevron.right", active: core.canGoForward) { core.webView.goForward() }
 
-                Button {
-                    core.webView.goForward()
-                } label: {
-                    Image(systemName: "chevron.right").font(.system(size: 17, weight: .semibold))
-                }
-                .disabled(!core.canGoForward)
-                .frame(width: 28)
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.7))
+                        TextField("输入网址", text: $urlField)
+                            .keyboardType(.URL)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                            .font(.footnote)
+                            .foregroundColor(.white)
+                            .submitLabel(.go)
+                            .onSubmit { goToURL() }
+                        Button {
+                            core.webView.reload()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.85))
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.18))
+                    .clipShape(Capsule())
 
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    TextField("输入网址", text: $urlField)
-                        .keyboardType(.URL)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                        .font(.footnote)
-                        .submitLabel(.go)
-                        .onSubmit { goToURL() }
                     Button {
-                        core.webView.reload()
+                        goToURL()
                     } label: {
-                        Image(systemName: "arrow.clockwise").font(.system(size: 14))
+                        Image(systemName: "paperplane.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(Color(.systemGray6))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+                .padding(.bottom, 4)
 
-                Button("前往") { goToURL() }
-                    .font(.subheadline)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-
-            if !core.statusLine.isEmpty {
-                HStack {
-                    Spacer()
+                if !core.statusLine.isEmpty {
                     Text(core.statusLine)
                         .font(.caption2)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.white.opacity(0.75))
                         .lineLimit(1)
+                        .padding(.bottom, 6)
+                        .padding(.horizontal, 12)
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 4)
             }
+            .background(
+                LinearGradient(colors: [Color(red: 0.27, green: 0.45, blue: 0.95),
+                                        Color(red: 0.20, green: 0.62, blue: 0.92)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .ignoresSafeArea(edges: .top)
+            )
 
             BrowserView(core: core)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 // 关键：关闭 SwiftUI 的键盘自动避让，由 WebKit 内部滚动输入框到键盘上方。
                 // 否则双重避让会让第三方键盘（讯飞/搜狗）的工具条与键盘脱节、页面出现空隙。
                 .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         .overlay(alignment: .bottomTrailing) {
-            // 悬浮工具按钮（右下角）
+            // 悬浮工具按钮（右下角，渐变+光晕）
             Button {
                 showToolSheet = true
             } label: {
                 Image(systemName: "wrench.and.screwdriver.fill")
                     .font(.system(size: 22))
                     .foregroundColor(.white)
-                    .frame(width: 56, height: 56)
-                    .background(Circle().fill(Color.blue))
-                    .shadow(color: .black.opacity(0.25), radius: 5, x: 0, y: 2)
+                    .frame(width: 58, height: 58)
+                    .background(
+                        Circle().fill(
+                            LinearGradient(colors: [Color(red: 0.32, green: 0.50, blue: 0.98),
+                                                    Color(red: 0.24, green: 0.38, blue: 0.90)],
+                                           startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
+                        .shadow(color: Color(red: 0.28, green: 0.45, blue: 0.95).opacity(0.5), radius: 8, x: 0, y: 4)
+                    )
             }
             .padding(.trailing, 20)
             .padding(.bottom, 44)
@@ -369,6 +550,18 @@ struct ContentView: View {
             core.showToast("网址格式不正确")
         }
     }
+
+    /// 顶部导航图标按钮
+    private func navIcon(_ systemName: String, active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(active ? .white : .white.opacity(0.35))
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(Color.white.opacity(active ? 0.22 : 0.10)))
+        }
+        .disabled(!active)
+    }
 }
 
 // MARK: - 悬浮工具菜单
@@ -382,46 +575,34 @@ struct ToolMenuView: View {
         NavigationView {
             List {
                 Section(header: Text("相册解锁")) {
-                    Button {
+                    toolRow("lock.open.fill", color: .orange, title: "解锁相册", subtitle: "恢复拍照/相册选择菜单") {
                         dismiss()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { core.runUnlock() }
-                    } label: {
-                        Label("解锁相册（恢复拍照/相册选择菜单）", systemImage: "lock.open")
                     }
-                    Button {
+                    toolRow("doc.text.magnifyingglass", color: .teal, title: "扫描文件框", subtitle: "查看上传框解锁状态") {
                         dismiss()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { core.scanFileInputs() }
-                    } label: {
-                        Label("扫描文件框（查看上传框解锁状态）", systemImage: "doc.text.magnifyingglass")
                     }
                 }
                 Section(header: Text("定位")) {
-                    Button {
+                    toolRow("location.fill", color: .red, title: "定位设置", subtitle: "手机定位 / 手动坐标 / 地名搜索") {
                         onOpenLocation()
-                    } label: {
-                        Label("定位设置（手机定位 / 手动坐标）", systemImage: "location")
                     }
                 }
                 Section(header: Text("排查")) {
-                    Button {
+                    toolRow("antenna.radiowaves.left.and.right", color: .purple, title: "调试", subtitle: "导出凭据与子应用地址") {
                         dismiss()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { core.dumpDebugInfo() }
-                    } label: {
-                        Label("调试（导出凭据与子应用地址）", systemImage: "antenna.radiowaves.left.and.right")
                     }
-                    Button {
+                    toolRow("arrow.clockwise", color: .blue, title: "重新加载页面", subtitle: nil) {
                         dismiss()
                         core.webView.reload()
-                    } label: {
-                        Label("重新加载页面", systemImage: "arrow.clockwise")
                     }
                 }
                 Section(header: Text("维护"), footer: Text("清除缓存会同时清除登录状态，需要重新登录门户。")) {
-                    Button(role: .destructive) {
+                    toolRow("trash.fill", color: .pink, title: "清除所有缓存", subtitle: "将退出登录", destructive: true) {
                         dismiss()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { core.clearAllCache() }
-                    } label: {
-                        Label("清除所有缓存（将退出登录）", systemImage: "trash")
+                        core.clearAllCache()
                     }
                 }
                 Section(header: Text("当前状态")) {
@@ -431,6 +612,7 @@ struct ToolMenuView: View {
                         .foregroundColor(.secondary)
                 }
             }
+            .listStyle(.insetGrouped)
             .navigationTitle("工具箱")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -438,6 +620,39 @@ struct ToolMenuView: View {
                     Button("关闭") { dismiss() }
                 }
             }
+        }
+    }
+
+    /// 彩色图标工具行
+    private func toolRow(_ icon: String, color: Color, title: String, subtitle: String?,
+                         destructive: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 30, height: 30)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(LinearGradient(colors: [color, color.opacity(0.75)],
+                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(destructive ? .red : .primary)
+                    if let subtitle = subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Color(.tertiaryLabel))
+            }
+            .padding(.vertical, 2)
         }
     }
 }
