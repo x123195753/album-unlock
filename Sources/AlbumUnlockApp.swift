@@ -707,12 +707,27 @@ struct ToolMenuView: View {
                     Text(s)
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    HStack(spacing: 6) {
+                        Text("版本")
+                        Spacer()
+                        Text(appVersion)
+                    }
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("工具箱")
             .navigationBarTitleDisplayMode(.inline)
         }
+    }
+
+    /// 版本号（每次构建递增，用于区分安装的包）
+    private var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = info?["CFBundleVersion"] as? String ?? "—"
+        return "\(short) (\(build))"
     }
 
     /// 彩色徽章工具行（仅标题）

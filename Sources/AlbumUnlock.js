@@ -247,7 +247,7 @@
 
   function readyToast() {
     var f = window.__albumFakeLocation;
-    var msg = UNLOCK_ON ? '相册解锁已就绪' : '相册解锁已关闭';
+    var msg = UNLOCK_ON ? '沙钢拍照已就绪' : '自动解锁已关闭';
     if (f && f.enabled) msg += '｜定位 ' + Number(f.lat).toFixed(4) + ',' + Number(f.lng).toFixed(4);
     toast(msg);
   }
