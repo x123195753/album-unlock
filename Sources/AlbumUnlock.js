@@ -33,7 +33,7 @@
     '.MuiAppBar-root,.MuiAppBar-positionSticky,.MuiAppBar-positionFixed,.MuiToolbar-root,',
     'header,#header,.header,.page-header,.app-header,.titlebar,.navbar,.nav-bar,',
     '.uni-page-head,.van-nav-bar,.mint-header,.mui-bar-nav,.top-bar{',
-    'background:#F0F4F8 !important;background-image:none !important;',
+    'background:#D6E8FA !important;background-image:none !important;',
     'border:0 !important;box-shadow:none !important;}',
     '.MuiAppBar-root *,.MuiToolbar-root *,header *,#header *,.header *,.page-header *,',
     '.app-header *,.titlebar *,.navbar *,.nav-bar *,.top-bar *{',

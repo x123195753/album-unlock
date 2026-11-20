@@ -781,12 +781,21 @@ struct ContentView: View {
     @State private var locationSettings: LocationSettings = .load()
     @State private var toast: ToastMessage?
 
+    /// 状态栏区底色：淡蓝 #D6E8FA（与网页导航条同色，连成一整条色带）
+    static let statusBarBlue = Color(red: 0.84, green: 0.91, blue: 0.98)
+
     var body: some View {
-        BrowserView(core: core)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // 关键：关闭 SwiftUI 的键盘自动避让，由 WebKit 内部滚动输入框到键盘上方。
-            // 否则双重避让会让第三方键盘（讯飞/搜狗）的工具条与键盘脱节、页面出现空隙。
-            .ignoresSafeArea(.keyboard, edges: .bottom)
+        ZStack {
+            // 状态栏 / Home 指示条区域露出的底色
+            Self.statusBarBlue.ignoresSafeArea()
+            BrowserView(core: core)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        // 淡蓝底上需要深色状态栏图标；同时 App 弹层统一浅色
+        .preferredColorScheme(.light)
+        // 关键：关闭 SwiftUI 的键盘自动避让，由 WebKit 内部滚动输入框到键盘上方。
+        // 否则双重避让会让第三方键盘（讯飞/搜狗）的工具条与键盘脱节、页面出现空隙。
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .overlay(alignment: .bottom) {
             // 全 App 唯一的提示出口：底部毛玻璃气泡（网页内自绘提示已移除，不再双份）
             if let t = toast {
