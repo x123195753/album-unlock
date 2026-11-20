@@ -319,6 +319,9 @@ struct ContentView: View {
             }
 
             BrowserView(core: core)
+                // 关键：关闭 SwiftUI 的键盘自动避让，由 WebKit 内部滚动输入框到键盘上方。
+                // 否则双重避让会让第三方键盘（讯飞/搜狗）的工具条与键盘脱节、页面出现空隙。
+                .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         .overlay(alignment: .bottomTrailing) {
             // 悬浮工具按钮（右下角）
