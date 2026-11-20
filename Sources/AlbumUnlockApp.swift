@@ -984,6 +984,27 @@ struct AddressBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            // 前部：后退 / 前进
+            Button {
+                core.webView.goBack()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(core.canGoBack ? Theme.accent : Color(.tertiaryLabel))
+            }
+            .buttonStyle(.plain)
+            .disabled(!core.canGoBack)
+
+            Button {
+                core.webView.goForward()
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(core.canGoForward ? Theme.accent : Color(.tertiaryLabel))
+            }
+            .buttonStyle(.plain)
+            .disabled(!core.canGoForward)
+
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.secondary)
@@ -1006,6 +1027,27 @@ struct AddressBar: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            // 后部：刷新 / 跳转
+            Button {
+                focused = false
+                core.webView.reload()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Theme.accent)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                go()
+            } label: {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(text.isEmpty ? Color(.tertiaryLabel) : Theme.accent)
+            }
+            .buttonStyle(.plain)
+            .disabled(text.isEmpty)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
