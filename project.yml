@@ -22,6 +22,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         # 版本号：每次构建都要递增。
-        # 当前 3.9 (19) —— 工具箱加调色盘（状态栏/导航条颜色点选即时预览）；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
-        CURRENT_PROJECT_VERSION: "19"
-        MARKETING_VERSION: "3.9"
+        # 当前 4.0 (20) —— 调色盘修复构建错误；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
+        CURRENT_PROJECT_VERSION: "20"
+        MARKETING_VERSION: "4.0"

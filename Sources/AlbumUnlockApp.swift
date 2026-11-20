@@ -1192,7 +1192,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         let settings = LocationSettings.load()
         let preludeSource = "window.__albumUnlockEnabled = \(UserDefaults.standard.object(forKey: Self.unlockKey) as? Bool ?? true); " +
             "window.__albumBeautify = \(UserDefaults.standard.object(forKey: Self.beautifyKey) as? Bool ?? true); " +
-            "window.__albumNavColor = '\(navColor)'; " +
+            "window.__albumNavColor = '\(UserDefaults.standard.string(forKey: Self.navColorKey) ?? Self.defaultNavColor)'; " +
             settings.preludeScript
         // 预置脚本：先写入解锁开关与定位模拟参数（所有 frame、文档开始时）
         let prelude = WKUserScript(
