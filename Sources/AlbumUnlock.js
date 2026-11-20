@@ -12,6 +12,62 @@
   // 提示统一由原生底部气泡渲染（毛玻璃胶囊 + 语义图标），网页内不再自绘，
   // 避免刚打开时同时出现网页 toast 与原生气泡两种风格。
 
+  /* ============ 〇、浅色美化 + 禁止页面拖动 ============ */
+
+  // 原生预置 window.__albumBeautify（工具箱可开关）
+  var BEAUTIFY = window.__albumBeautify !== false;
+
+  var THEME_CSS = [
+    /* 底色统一浅灰、禁止横向拖动与回弹 */
+    'html,body{background-color:#F4F6F9 !important;color:#1C1C1E !important;',
+    'overscroll-behavior:none !important;overflow-x:hidden !important;',
+    '-webkit-tap-highlight-color:transparent;}',
+
+    /* 页头：白底、无边框、极淡分隔线 */
+    'header,#header,.header,.page-header,.app-header,.titlebar,.navbar,.nav-bar,',
+    '.navbar-fixed-top,.uni-page-head,.van-nav-bar,.mint-header,.weui-navbar,',
+    '.mui-bar-nav,.aui-bar,.am-navbar,.top-bar{background:#FFFFFF !important;',
+    'background-image:none !important;border:0 !important;box-shadow:0 1px 0 rgba(0,0,0,.05) !important;}',
+
+    /* 页头内的文字与图标转深色 */
+    'header *,#header *,.header *,.page-header *,.app-header *,.titlebar *,',
+    '.navbar *,.nav-bar *,.uni-page-head *,.van-nav-bar *,.mint-header *,',
+    '.weui-navbar *,.mui-bar-nav *,.aui-bar *,.am-navbar *,.top-bar *{',
+    'color:#1C1C1E !important;fill:#1C1C1E !important;text-shadow:none !important;}',
+
+    /* 卡片 / 列表 / 单元格：去边框、去阴影、纯白 */
+    '.card,.panel,.van-cell,.mint-cell,.weui-cell,.aui-card,.am-list-item,',
+    '.uni-card,.uni-list,.uni-list-item,.list-card,.cell,.list-item{',
+    'border:0 !important;box-shadow:none !important;background-color:#FFFFFF !important;}',
+
+    /* 分割线更淡 */
+    'hr,.divider,.van-cell::after,.mint-cell::after,.uni-list-item::after{',
+    'border-color:rgba(0,0,0,.06) !important;}',
+
+    /* 输入框浅底浅边 */
+    'input,textarea,select{background-color:#FFFFFF !important;',
+    'border-color:rgba(0,0,0,.08) !important;color:#1C1C1E !important;}'
+  ].join('');
+
+  function installTheme() {
+    if (!BEAUTIFY) {
+      var old = document.getElementById('__album_theme');
+      if (old) old.remove();
+      return;
+    }
+    try {
+      if (document.getElementById('__album_theme')) return;
+      var st = document.createElement('style');
+      st.id = '__album_theme';
+      st.textContent = THEME_CSS;
+      (document.head || document.documentElement).appendChild(st);
+    } catch (e) {}
+  }
+  installTheme();
+  document.addEventListener('DOMContentLoaded', installTheme);
+  // 单页应用切换页面时 head 可能重建，兜底补回
+  setInterval(installTheme, 3000);
+
   /* ============ 一、相册解锁 ============ */
 
   function unlockInput(input) {

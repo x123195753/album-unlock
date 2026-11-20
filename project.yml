@@ -22,6 +22,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         # 版本号：每次构建都要递增。
-        # 当前 3.2 (12) —— 定位搜索接入 Apple 地图 POI；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
-        CURRENT_PROJECT_VERSION: "12"
-        MARKETING_VERSION: "3.2"
+        # 当前 3.3 (13) —— 常设位置命名备注 / 禁拖动 / 网页浅色美化；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
+        CURRENT_PROJECT_VERSION: "13"
+        MARKETING_VERSION: "3.3"

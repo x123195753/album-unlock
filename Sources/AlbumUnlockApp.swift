@@ -111,6 +111,61 @@ extension LocationSettings {
     }
 }
 
+// MARK: - 常设位置命名（新建 / 重命名共用）
+
+struct PresetEdit: Identifiable {
+    enum Mode: Equatable { case create, rename }
+    let id = UUID()
+    let mode: Mode
+    let lat: Double
+    let lng: Double
+    var draft: String
+}
+
+/// 输入名称备注的小面板
+struct PresetNameEditor: View {
+    let title: String
+    var onSave: (String) -> Void
+    @State private var text: String
+    @Environment(\.dismiss) private var dismiss
+
+    init(title: String, initialName: String, onSave: @escaping (String) -> Void) {
+        self.title = title
+        self.onSave = onSave
+        _text = State(initialValue: initialName)
+    }
+
+    private var trimmed: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("名称备注"),
+                        footer: Text("只在本机列表里显示，方便区分各个位置。")) {
+                    TextField("例如：常州新岚厂 / 家里", text: $text)
+                        .submitLabel(.done)
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        onSave(trimmed)
+                        dismiss()
+                    }
+                    .disabled(trimmed.isEmpty)
+                }
+            }
+        }
+    }
+}
+
 struct LocationSettingsView: View {
     @Binding var settings: LocationSettings
     var onApply: (LocationSettings) -> Void
@@ -134,9 +189,10 @@ struct LocationSettingsView: View {
     @State private var searchHint = ""
     @State private var pickedPlace = ""
 
-    // 常设位置（可增删）
+    // 常设位置（可增删、可改名称备注）
     @State private var presets: [SavedPlace] = LocationSettings.loadPresets()
     @State private var saveToPresetsAfterFetch = false
+    @State private var presetEdit: PresetEdit?
 
     init(settings: Binding<LocationSettings>, onApply: @escaping (LocationSettings) -> Void) {
         _settings = settings
@@ -222,24 +278,39 @@ struct LocationSettingsView: View {
                 }
 
                 if mode == "manual" {
-                    Section(header: Text("常设位置"), footer: Text("左滑可删除；点「添加当前位置」把手机定位存入列表。")) {
+                    Section(header: Text("常设位置"), footer: Text("左滑删除；点右侧铅笔可改名称备注。")) {
                         ForEach(presets) { p in
-                            Button {
-                                latText = String(format: "%.6f", p.lat)
-                                lngText = String(format: "%.6f", p.lng)
-                                enabled = true
-                                pickedPlace = p.name
-                            } label: {
-                                HStack {
-                                    Image(systemName: "mappin.and.ellipse")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(Theme.accent)
-                                    Text(p.name)
-                                    Spacer()
-                                    Text(String(format: "%.4f, %.4f", p.lat, p.lng))
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
+                            HStack(spacing: 10) {
+                                Button {
+                                    applyPreset(p)
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "mappin.and.ellipse")
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundColor(Theme.accent)
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(p.name)
+                                                .font(.subheadline)
+                                                .foregroundColor(.primary)
+                                            Text(String(format: "%.4f, %.4f", p.lat, p.lng))
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                    }
+                                    .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    presetEdit = PresetEdit(mode: .rename, lat: p.lat, lng: p.lng, draft: p.name)
+                                } label: {
+                                    Image(systemName: "pencil.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(Theme.accent)
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("重命名")
                             }
                         }
                         .onDelete { offsets in
@@ -250,6 +321,16 @@ struct LocationSettingsView: View {
                             saveCurrentAsPreset()
                         } label: {
                             Label("添加当前位置", systemImage: "plus.circle.fill")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundColor(Theme.accent)
+                        }
+                        // 把上面填入的坐标（例如搜到的公司）存成常设位置并命名
+                        Button {
+                            let lat = Double(latText.trimmingCharacters(in: .whitespaces)) ?? settings.lat
+                            let lng = Double(lngText.trimmingCharacters(in: .whitespaces)) ?? settings.lng
+                            beginCreatePreset(lat, lng)
+                        } label: {
+                            Label("保存当前坐标", systemImage: "bookmark.fill")
                                 .font(.subheadline.weight(.medium))
                                 .foregroundColor(Theme.accent)
                         }
@@ -320,26 +401,55 @@ struct LocationSettingsView: View {
                     Button("取消") { dismiss() }
                 }
             }
+            .sheet(item: $presetEdit) { edit in
+                PresetNameEditor(title: edit.mode == .create ? "保存为常设位置" : "重命名",
+                                 initialName: edit.draft) { name in
+                    commitPresetEdit(edit, name: name)
+                }
+            }
         }
     }
 
-    /// 把当前位置存入常设列表
+    /// 选用某个常设位置
+    private func applyPreset(_ p: SavedPlace) {
+        latText = String(format: "%.6f", p.lat)
+        lngText = String(format: "%.6f", p.lng)
+        enabled = true
+        pickedPlace = p.name
+    }
+
+    /// 打开命名面板（新建）
+    private func beginCreatePreset(_ lat: Double, _ lng: Double) {
+        presetEdit = PresetEdit(mode: .create, lat: lat, lng: lng,
+                                draft: "我的位置 \(presets.count + 1)")
+    }
+
+    /// 提交新建 / 重命名
+    private func commitPresetEdit(_ edit: PresetEdit, name: String) {
+        switch edit.mode {
+        case .create:
+            presets.append(SavedPlace(name: name, lat: edit.lat, lng: edit.lng))
+            searchHint = "已添加到常设位置"
+        case .rename:
+            if let i = presets.firstIndex(where: {
+                abs($0.lat - edit.lat) < 1e-9 && abs($0.lng - edit.lng) < 1e-9
+            }) {
+                presets[i] = SavedPlace(name: name, lat: presets[i].lat, lng: presets[i].lng)
+            }
+        }
+        LocationSettings.savePresets(presets)
+    }
+
+    /// 把当前位置存入常设列表（先让用户命名）
     private func saveCurrentAsPreset() {
         if let dl = deviceLat, let dg = deviceLng {
-            doSavePreset(dl, dg)
+            beginCreatePreset(dl, dg)
         } else if let c = LocationSettings.cachedDevice() {
-            doSavePreset(c.lat, c.lng)
+            beginCreatePreset(c.lat, c.lng)
         } else {
             saveToPresetsAfterFetch = true
             fetchDevice()
         }
-    }
-
-    private func doSavePreset(_ lat: Double, _ lng: Double) {
-        let place = SavedPlace(name: "我的位置 \(presets.count + 1)", lat: lat, lng: lng)
-        presets.append(place)
-        LocationSettings.savePresets(presets)
-        searchHint = "已添加到常设位置"
     }
 
     /// 执行地名搜索
@@ -391,7 +501,7 @@ struct LocationSettingsView: View {
                 deviceStatus = "获取成功（GCJ-02）"
                 if saveToPresetsAfterFetch {
                     saveToPresetsAfterFetch = false
-                    doSavePreset(lat, lng)
+                    beginCreatePreset(lat, lng)
                 }
             }
         }
@@ -819,15 +929,7 @@ struct ToolMenuView: View {
                 Section(header: Text("相册解锁")) {
                     // 带彩色徽章的开关行（与其他工具行风格一致）
                     HStack(spacing: 12) {
-                        Image(systemName: "lock.open.fill")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(.white)
-                            .frame(width: 32, height: 32)
-                            .background(
-                                RoundedRectangle(cornerRadius: 9)
-                                    .fill(LinearGradient(colors: [.orange, .orange.opacity(0.75)],
-                                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                            )
+                        badge("lock.open.fill", color: .orange)
                         Text("自动解锁相册")
                             .font(.subheadline.weight(.medium))
                         Spacer()
@@ -852,6 +954,20 @@ struct ToolMenuView: View {
                     }
                 }
                 Section(header: Text("页面")) {
+                    // 网页浅色美化开关
+                    HStack(spacing: 12) {
+                        badge("paintbrush.fill", color: .purple)
+                        Text("网页美化（浅色）")
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { core.beautifyEnabled },
+                            set: { core.setBeautifyEnabled($0) }
+                        ))
+                        .labelsHidden()
+                        .tint(Theme.accent)
+                    }
+                    .padding(.vertical, 2)
                     toolRow("arrow.clockwise", color: .blue, title: "重新载入") {
                         dismiss()
                         core.webView.reload()
@@ -891,20 +1007,25 @@ struct ToolMenuView: View {
         return "\(short) (\(build))"
     }
 
+    /// 彩色徽章（32×32 圆角 9，白色矢量图标）
+    private func badge(_ icon: String, color: Color) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: 15, weight: .medium))
+            .foregroundColor(.white)
+            .frame(width: 32, height: 32)
+            .background(
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(LinearGradient(colors: [color, color.opacity(0.72)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+            )
+    }
+
     /// 彩色徽章工具行（仅标题）
     private func toolRow(_ icon: String, color: Color, title: String,
                          destructive: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.white)
-                    .frame(width: 32, height: 32)
-                    .background(
-                        RoundedRectangle(cornerRadius: 9)
-                            .fill(LinearGradient(colors: [color, color.opacity(0.72)],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
-                    )
+                badge(icon, color: color)
                 Text(title)
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(destructive ? .red : .primary)
@@ -922,6 +1043,7 @@ struct ToolMenuView: View {
 
 final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     static let unlockKey = "albumUnlockEnabled"
+    static let beautifyKey = "albumBeautifyEnabled"
 
     let webView: WKWebView
     @Published var canGoBack = false
@@ -931,6 +1053,8 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var toast: ToastMessage?
     @Published var quickStats = "尚未加载页面"
     @Published var unlockEnabled = true
+    /// 网页浅色美化（去边框、页头浅色）
+    @Published var beautifyEnabled = true
 
     @Published var pageTitle = ""
     @Published var barUIColor: UIColor?
@@ -953,16 +1077,20 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     private var observers: [NSKeyValueObservation] = []
     private var locationSettings: LocationSettings = .load()
 
-    /// 预置脚本：解锁开关 + 定位模拟参数
+    /// 预置脚本：解锁开关 + 网页美化开关 + 定位模拟参数
     private var combinedPrelude: String {
-        "window.__albumUnlockEnabled = \(unlockEnabled); " + locationSettings.preludeScript
+        "window.__albumUnlockEnabled = \(unlockEnabled); " +
+        "window.__albumBeautify = \(beautifyEnabled); " +
+        locationSettings.preludeScript
     }
 
     override init() {
         let cfg = WKWebViewConfiguration()
         let controller = cfg.userContentController
         let settings = LocationSettings.load()
-        let preludeSource = "window.__albumUnlockEnabled = \(UserDefaults.standard.object(forKey: Self.unlockKey) as? Bool ?? true); " + settings.preludeScript
+        let preludeSource = "window.__albumUnlockEnabled = \(UserDefaults.standard.object(forKey: Self.unlockKey) as? Bool ?? true); " +
+            "window.__albumBeautify = \(UserDefaults.standard.object(forKey: Self.beautifyKey) as? Bool ?? true); " +
+            settings.preludeScript
         // 预置脚本：先写入解锁开关与定位模拟参数（所有 frame、文档开始时）
         let prelude = WKUserScript(
             source: preludeSource,
@@ -985,8 +1113,18 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
 
         super.init()
         unlockEnabled = UserDefaults.standard.object(forKey: Self.unlockKey) as? Bool ?? true
+        beautifyEnabled = UserDefaults.standard.object(forKey: Self.beautifyKey) as? Bool ?? true
         webView.allowsBackForwardNavigationGestures = true
         webView.navigationDelegate = self
+
+        // 禁止页面被拖动/回弹：关掉橡皮筋与横向拖拽，整页固定
+        let sv = webView.scrollView
+        sv.bounces = false
+        sv.alwaysBounceVertical = false
+        sv.alwaysBounceHorizontal = false
+        sv.isDirectionalLockEnabled = true
+        sv.showsHorizontalScrollIndicator = false
+        sv.contentInsetAdjustmentBehavior = .never
 
         observers.append(webView.observe(\.canGoBack, options: [.new]) { [weak self] w, _ in
             self?.canGoBack = w.canGoBack
@@ -1050,6 +1188,15 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         rebuildScripts()
         webView.reload()
         showToast(on ? "相册解锁已开启" : "相册解锁已关闭", kind: on ? .success : .info)
+    }
+
+    /// 切换网页美化（浅色去边框）：保存、重建注入脚本并刷新页面立即生效
+    func setBeautifyEnabled(_ on: Bool) {
+        beautifyEnabled = on
+        UserDefaults.standard.set(on, forKey: Self.beautifyKey)
+        rebuildScripts()
+        webView.reload()
+        showToast(on ? "网页美化已开启" : "网页美化已关闭", kind: on ? .success : .info)
     }
 
     // MARK: 首次就绪提示（合并解锁与定位状态，只弹一条）
