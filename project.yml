@@ -22,6 +22,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         # 版本号：每次构建都要递增。
-        # 当前 4.16 (36) —— 地址栏上下空位等高（各15pt）、隐藏地址栏时顶部色带加高16pt；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
-        CURRENT_PROJECT_VERSION: "36"
-        MARKETING_VERSION: "4.16"
+        # 当前 4.17 (37) —— 地址栏空位上10/下20；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
+        CURRENT_PROJECT_VERSION: "37"
+        MARKETING_VERSION: "4.17"

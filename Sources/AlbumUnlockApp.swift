@@ -1069,10 +1069,10 @@ struct AddressBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(Capsule().fill(Color(.secondarySystemBackground)))
-        // 上下空位等高：各 15pt（总量不变，保持 1.5 倍）
+        // 上下空位：上 10 / 下 20
         .padding(.horizontal, 12)
-        .padding(.top, 15)
-        .padding(.bottom, 15)
+        .padding(.top, 10)
+        .padding(.bottom, 20)
         .onAppear { if !focused { text = core.currentURLString } }
         .onChange(of: core.currentURLString) { newValue in
             // 正在输入时不覆盖
