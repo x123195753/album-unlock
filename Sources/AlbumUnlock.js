@@ -308,6 +308,256 @@
     if (patchWx() || ++tries > 60) clearInterval(timer);
   }, 500);
 
+  /* ============ 三、上传图片注入 EXIF（拍摄时间 + GPS，与模拟定位一致） ============ */
+
+  function exifOn() { return window.__albumExifEnabled !== false; }
+
+  // 构造 EXIF APP1 段（大端 TIFF）：机型/DateTime + ExifIFD(拍摄时间/像素尺寸) + GPSIFD
+  function buildExifApp1(lat, lng, width, height) {
+    try {
+      var now = new Date();
+      function p2(n) { return n < 10 ? '0' + n : '' + n; }
+      var dateStr = now.getFullYear() + ':' + p2(now.getMonth() + 1) + ':' + p2(now.getDate()) + ' ' +
+        p2(now.getHours()) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds());
+      var dateStamp = now.getFullYear() + ':' + p2(now.getMonth() + 1) + ':' + p2(now.getDate());
+
+      function u32b(v) { return [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]; }
+      function u16b(v) { return [(v >> 8) & 255, v & 255]; }
+      function ascii(s) { var a = []; for (var i = 0; i < s.length; i++) a.push(s.charCodeAt(i) & 255); a.push(0); return a; }
+      function dms(v) {
+        var d = Math.floor(Math.abs(v)), mf = (Math.abs(v) - d) * 60, m = Math.floor(mf);
+        var s = Math.min(Math.round((mf - m) * 60 * 100), 5999);
+        return [[d, 1], [m, 1], [s, 100]];
+      }
+      function rats(a) { var b = []; for (var i = 0; i < a.length; i++) b = b.concat(u32b(a[i][0]), u32b(a[i][1])); return b; }
+
+      var hasGPS = lat !== null && lng !== null && isFinite(lat) && isFinite(lng);
+      var la = hasGPS ? dms(lat) : null;
+      var lo = hasGPS ? dms(lng) : null;
+
+      // 条目：[tag, type, valueBytes]；type: 1 BYTE, 2 ASCII, 4 LONG, 5 RATIONAL
+      var ifd0 = [
+        [0x010F, 2, ascii('Apple')],              // Make
+        [0x0110, 2, ascii('iPhone')],             // Model（机型适配）
+        [0x0132, 2, ascii(dateStr)],              // DateTime
+        [0x8769, 4, null, 'E'],                   // ExifIFD 指针
+        [0x8825, 4, null, 'G']                    // GPS IFD 指针
+      ];
+      var exif = [
+        [0x9003, 2, ascii(dateStr)],              // DateTimeOriginal
+        [0x9004, 2, ascii(dateStr)],              // DateTimeDigitized
+        [0xA002, 4, u32b(width | 0)],             // PixelXDimension
+        [0xA003, 4, u32b(height | 0)]             // PixelYDimension
+      ];
+      var gps = null;
+      if (hasGPS) {
+        gps = [
+          [0x0000, 1, [2, 3, 0, 0]],                          // GPSVersionID
+          [0x0001, 2, [lat >= 0 ? 78 : 83, 0]],               // N/S
+          [0x0002, 5, rats(la)],                              // GPSLatitude
+          [0x0003, 2, [lng >= 0 ? 69 : 87, 0]],               // E/W
+          [0x0004, 5, rats(lo)],                              // GPSLongitude
+          [0x0007, 5, rats([[now.getUTCHours(), 1], [now.getUTCMinutes(), 1], [now.getUTCSeconds(), 1]])],
+          [0x0012, 2, ascii('GCJ-02')],                       // MapDatum
+          [0x001D, 2, ascii(dateStamp)]                       // GPSDateStamp
+        ];
+      } else {
+        ifd0 = ifd0.slice(0, 4);
+      }
+
+      function ifdSize(n) { return 2 + 12 * n + 4; }
+      var off0 = 8;
+      var offE = off0 + ifdSize(ifd0.length);
+      var offG = offE + ifdSize(exif.length);
+      var dataStart = offG + (gps ? ifdSize(gps.length) : 0);
+
+      var data = [];
+      function fillValue(e, ptrName) {
+        if (ptrName === 'E') return u32b(offE);
+        if (ptrName === 'G') return u32b(offG);
+        var b = e[2];
+        if (b.length > 4) {
+          e.__off = dataStart + data.length;
+          data.push.apply(data, b);
+          if (b.length % 2) data.push(0);
+          return null;
+        }
+        var inl = b.slice();
+        while (inl.length < 4) inl.push(0);
+        return inl;
+      }
+      function serialize(entries) {
+        var out = u16b(entries.length);
+        for (var i = 0; i < entries.length; i++) {
+          var e = entries[i];
+          var tag = e[0], type = e[1], val = fillValue(e, e[3]);
+          var count = type === 2 ? e[2].length : (type === 5 ? e[2].length / 8 : (type === 1 ? 4 : 1));
+          out = out.concat(u16b(tag), u16b(type), u32b(count));
+          out = out.concat(val === null ? u32b(e.__off) : val);
+        }
+        out = out.concat(u32b(0)); // 下一 IFD 偏移 = 0
+        return out;
+      }
+
+      var tiff = [0x4D, 0x4D, 0x00, 0x2A].concat(u32b(8))  // "MM" + 0x2A + IFD0 偏移 8
+        .concat(serialize(ifd0))
+        .concat(serialize(exif));
+      if (gps) tiff = tiff.concat(serialize(gps));
+      tiff = tiff.concat(data);
+
+      // APP1 段：FF E1 + 长度 + "Exif\0\0" + TIFF
+      var payload = [0x45, 0x78, 0x69, 0x66, 0x00, 0x00].concat(tiff);
+      var segLen = payload.length + 2;
+      return new Uint8Array([0xFF, 0xE1].concat(u16b(segLen)).concat(payload));
+    } catch (e) { return null; }
+  }
+
+  // 把 APP1 写进 JPEG（替换已有 Exif 段，避免带上照片原始的真实 GPS）
+  function injectExif(buffer, app1) {
+    try {
+      var u8 = new Uint8Array(buffer);
+      if (u8.length < 4 || u8[0] !== 0xFF || u8[1] !== 0xD8 || !app1) return null;
+      var segs = [], insertPos = 2, pos = 2, remove = [];
+      while (pos + 4 <= u8.length) {
+        if (u8[pos] !== 0xFF) break;
+        var m = u8[pos + 1];
+        if (m === 0xD9 || m === 0xDA) { segs.push([pos, u8.length]); break; } // 扫描数据 → 余下全部
+        if (m >= 0xD0 && m <= 0xD7) { pos += 2; continue; }                   // 独立标记
+        var segLen = (u8[pos + 2] << 8) | u8[pos + 3];
+        var end = pos + 2 + segLen;
+        if (m === 0xE0) { insertPos = end; }
+        if (m === 0xE1 && u8[pos + 4] === 0x45 && u8[pos + 5] === 0x78 && u8[pos + 6] === 0x69 &&
+            u8[pos + 7] === 0x66 && u8[pos + 8] === 0x00) { remove.push([pos, end]); }
+        else { segs.push([pos, end]); }
+        pos = end;
+      }
+      if (!segs.length) segs.push([2, u8.length]);
+      var total = insertPos + app1.length;
+      for (var i = 0; i < segs.length; i++) { if (segs[i][0] >= insertPos || segs[i][1] > insertPos) total += segs[i][1] - segs[i][0]; }
+      var out = new Uint8Array(total), w = 0;
+      out.set(u8.subarray(0, insertPos), 0); w = insertPos;
+      out.set(app1, w); w += app1.length;
+      for (var j = 0; j < segs.length; j++) {
+        if (segs[j][1] <= insertPos) continue;
+        out.set(u8.subarray(segs[j][0], segs[j][1]), w); w += segs[j][1] - segs[j][0];
+      }
+      return out.subarray(0, w);
+    } catch (e) { return null; }
+  }
+
+  var exifDoneFiles = typeof WeakSet === 'function' ? new WeakSet() : null;
+
+  // 需要处理的图片（JPEG/PNG/WebP/HEIC 都会被统一重编码为 JPEG 并注入 EXIF）
+  function isImage(file) {
+    if (!file) return false;
+    return /^image\//i.test(file.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || '');
+  }
+
+  // 分辨率适配机型：最长边重采样到 4032px（iPhone 12MP 主摄规格），补齐或压缩到同一规格
+  function normalizeResolution(file, cb) {
+    try {
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      var fail = function () { URL.revokeObjectURL(url); cb(file); };
+      img.onerror = fail;
+      img.onload = function () {
+        try {
+          var MAX = 4032;
+          var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+          if (!w || !h) { fail(); return; }
+          var scale = MAX / Math.max(w, h);
+          var w2 = Math.max(1, Math.round(w * scale)), h2 = Math.max(1, Math.round(h * scale));
+          var cv = document.createElement('canvas');
+          cv.width = w2; cv.height = h2;
+          var ctx = cv.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, w2, h2);
+          URL.revokeObjectURL(url);
+          cv.toBlob(function (blob) {
+            if (!blob) { cb(file); return; }
+            var nf = new File([blob], (file.name || 'photo').replace(/\.(png|webp|heic)$/i, '.jpg'),
+                              { type: 'image/jpeg' });
+            nf.__albumDims = [w2, h2];
+            if (exifDoneFiles) exifDoneFiles.add(nf);
+            cb(nf);
+          }, 'image/jpeg', 0.92);
+        } catch (e) { fail(); }
+      };
+      img.src = url;
+    } catch (e) { cb(file); }
+  }
+
+  // 处理单个文件：分辨率归一化 → 注入 EXIF → 生成新 File
+  function injectFile(file, cb) {
+    normalizeResolution(file, function (resized) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var f = window.__albumFakeLocation;
+        var dims = resized.__albumDims || [0, 0];
+        var app1 = buildExifApp1(f && f.enabled ? f.lat : null, f && f.enabled ? f.lng : null,
+                                 dims[0], dims[1]);
+        var out = injectExif(fr.result, app1);
+        if (!out) { cb(resized); return; }
+        try {
+          var nf = new File([out], resized.name, { type: resized.type || 'image/jpeg' });
+          if (exifDoneFiles) exifDoneFiles.add(nf);
+          cb(nf);
+        } catch (e) { cb(resized); }
+      };
+      fr.onerror = function () { cb(resized); };
+      fr.readAsArrayBuffer(resized);
+    });
+  }
+
+  // 批量替换 input.files（保持顺序，非 JPEG 原样保留）
+  function processInput(input, done) {
+    var files = [];
+    try { files = Array.prototype.slice.call(input.files || []); } catch (e) {}
+    var jobs = [];
+    for (var i = 0; i < files.length; i++) {
+      if (isImage(files[i]) && !(exifDoneFiles && exifDoneFiles.has(files[i]))) jobs.push(i);
+    }
+    if (!jobs.length) { done(); return; }
+    var pending = jobs.length, changed = false;
+    for (var k = 0; k < jobs.length; k++) {
+      (function (idx) {
+        injectFile(files[idx], function (nf) {
+          if (nf !== files[idx]) { files[idx] = nf; changed = true; }
+          if (--pending === 0) {
+            if (changed) {
+              try {
+                var dt = new DataTransfer();
+                for (var m = 0; m < files.length; m++) dt.items.add(files[m]);
+                input.files = dt.files;
+              } catch (e) {}
+            }
+            done();
+          }
+        });
+      })(jobs[k]);
+    }
+  }
+
+  // change 事件先拦截：EXIF 处理完再放行给页面，页面拿到的已是带元数据的图
+  document.addEventListener('change', function (e) {
+    if (e.__albumExifDone) return;
+    var t = e.target;
+    if (!t || t.tagName !== 'INPUT' || t.type !== 'file' || !t.files || !t.files.length) return;
+    var f = window.__albumFakeLocation;
+    if (!exifOn()) return;
+    var hasImg = false;
+    for (var i = 0; i < t.files.length; i++) { if (isImage(t.files[i]) && !(exifDoneFiles && exifDoneFiles.has(t.files[i]))) { hasImg = true; break; } }
+    if (!hasImg) return;
+    e.stopImmediatePropagation();
+    e.stopPropagation();
+    processInput(t, function () {
+      var ev = new Event('change', { bubbles: true });
+      ev.__albumExifDone = true;
+      t.dispatchEvent(ev);
+    });
+  }, true);
+
   // 3. 状态查询
   window.__albumUnlockStats = function () {
     var f = window.__albumFakeLocation || {};

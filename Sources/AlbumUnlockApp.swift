@@ -1080,6 +1080,20 @@ struct ToolMenuView: View {
                     }
                 }
                 Section(header: Text("页面")) {
+                    // 上传照片处理开关（EXIF + 分辨率适配机型）
+                    HStack(spacing: 12) {
+                        badge("camera.fill", color: .cyan)
+                        Text("上传加EXIF信息")
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { core.exifEnabled },
+                            set: { core.setExifEnabled($0) }
+                        ))
+                        .labelsHidden()
+                        .tint(Theme.accent)
+                    }
+                    .padding(.vertical, 2)
                     // 地址栏开关
                     HStack(spacing: 12) {
                         badge("globe", color: .teal)
@@ -1230,6 +1244,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     static let beautifyKey = "albumBeautifyEnabled"
     static let navColorKey = "albumNavColor"
     static let addressBarKey = "albumAddressBarEnabled"
+    static let exifKey = "albumExifEnabled"
     /// 默认导航条/状态栏色：灰蓝（可在工具箱调色盘更换）
     static let defaultNavColor = "#F0F4F8"
 
@@ -1248,6 +1263,8 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         ?? WebCore.defaultNavColor
     /// 地址栏显示开关（工具箱可切换）
     @Published var addressBarEnabled = UserDefaults.standard.object(forKey: "albumAddressBarEnabled") as? Bool ?? true
+    /// 上传照片处理开关（EXIF + 分辨率适配机型）
+    @Published var exifEnabled = UserDefaults.standard.object(forKey: "albumExifEnabled") as? Bool ?? true
     /// 当前页面地址（供地址栏显示）
     @Published var currentURLString = ""
 
@@ -1272,11 +1289,12 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     private var observers: [NSKeyValueObservation] = []
     private var locationSettings: LocationSettings = .load()
 
-    /// 预置脚本：解锁开关 + 网页美化开关 + 导航条颜色 + 定位模拟参数
+    /// 预置脚本：解锁开关 + 网页美化开关 + 导航条颜色 + EXIF 开关 + 定位模拟参数
     private var combinedPrelude: String {
         "window.__albumUnlockEnabled = \(unlockEnabled); " +
         "window.__albumBeautify = \(beautifyEnabled); " +
         "window.__albumNavColor = '\(navColor)'; " +
+        "window.__albumExifEnabled = \(exifEnabled); " +
         locationSettings.preludeScript
     }
 
@@ -1287,6 +1305,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         let preludeSource = "window.__albumUnlockEnabled = \(UserDefaults.standard.object(forKey: Self.unlockKey) as? Bool ?? true); " +
             "window.__albumBeautify = \(UserDefaults.standard.object(forKey: Self.beautifyKey) as? Bool ?? true); " +
             "window.__albumNavColor = '\(UserDefaults.standard.string(forKey: Self.navColorKey) ?? Self.defaultNavColor)'; " +
+            "window.__albumExifEnabled = \(UserDefaults.standard.object(forKey: Self.exifKey) as? Bool ?? true); " +
             settings.preludeScript
         // 预置脚本：先写入解锁开关与定位模拟参数（所有 frame、文档开始时）
         let prelude = WKUserScript(
@@ -1408,6 +1427,15 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     func setAddressBar(_ on: Bool) {
         addressBarEnabled = on
         UserDefaults.standard.set(on, forKey: Self.addressBarKey)
+    }
+
+    /// 切换上传照片处理（EXIF + 分辨率适配）：保存、重建脚本并同步当前页标记
+    func setExifEnabled(_ on: Bool) {
+        exifEnabled = on
+        UserDefaults.standard.set(on, forKey: Self.exifKey)
+        rebuildScripts()
+        webView.evaluateJavaScript("window.__albumExifEnabled = \(on)") { _, _ in }
+        showToast(on ? "上传处理已开启" : "上传处理已关闭", kind: on ? .success : .info)
     }
 
     /// 地址栏跳转：自动补协议头
