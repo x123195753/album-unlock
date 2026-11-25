@@ -810,6 +810,9 @@ struct ContentView: View {
                 }
                 BrowserView(core: core)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // 网页延伸到屏幕底部：底部安全区露出的是页面自身背景色，
+                    // 不再显示调色盘的导航色
+                    .ignoresSafeArea(.container, edges: .bottom)
             }
         }
         // 淡蓝底上需要深色状态栏图标；同时 App 弹层统一浅色

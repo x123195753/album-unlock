@@ -50,6 +50,10 @@
     '.MuiToolbar-root .MuiTypography-h6{font-size:16px !important;}',
     '.MuiToolbar-root .MuiIconButton-root{padding:6px !important;}',
 
+    /* 隐藏门户顶部导航条（开放应用页 / 登录页的 AppBar），
+       内容区（含 iframe）自动占满整个空间 */
+    '.MuiAppBar-root{display:none !important;}',
+
     /* 输入框只去外发光/描边，不改配色 */
     'input,textarea,select{outline:none !important;}'
     ].join('');
