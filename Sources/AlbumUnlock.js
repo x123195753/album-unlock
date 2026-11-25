@@ -45,7 +45,29 @@
     'color:#1C1C1E !important;fill:#1C1C1E !important;text-shadow:none !important;}',
 
     /* 输入框只去外发光/描边，不改配色 */
-    'input,textarea,select{outline:none !important;}'
+    'input,textarea,select{outline:none !important;}',
+
+    /* ==== 克制精修：只动圆角与分割线，不改任何颜色 ==== */
+
+    /* 卡片 / 列表 / 单元格圆角化 */
+    '.MuiPaper-root,.MuiCard-root,.MuiListItem-root,.MuiListItemButton-root,',
+    '.card,.panel,.van-cell,.van-card,.van-panel,.mint-cell,.weui-cell,.weui-form,',
+    '.uni-card,.uni-list,.uni-list-item,.list-card,.cell,.list-item,.aui-card,',
+    '.am-list-item,.iframe-box,.app-card{border-radius:12px !important;}',
+
+    /* 按钮圆角化（保持原有配色） */
+    'button,.MuiButton-root,.van-button,.am-button,.weui-btn,.uni-btn,a.mui-btn{',
+    'border-radius:10px !important;}',
+
+    /* 分割线柔化：压到极淡的中性灰，不再是生硬黑线 */
+    'hr,.MuiDivider-root,.van-divider{border-color:rgba(0,0,0,.08) !important;',
+    'background-color:rgba(0,0,0,.08) !important;}',
+    '.van-cell::after,.mint-cell::after,.uni-list-item::after,',
+    '.weui-cell::after{border-color:rgba(0,0,0,.07) !important;}',
+
+    /* 文字渲染更细腻，点击无灰色高亮块 */
+    'body{-webkit-font-smoothing:antialiased;}',
+    '*{-webkit-tap-highlight-color:transparent !important;}'
     ].join('');
   }
 
