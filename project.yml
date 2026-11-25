@@ -22,6 +22,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         # 版本号：每次构建都要递增。
-        # 当前 4.6 (26) —— 网页美化升级为克制精修（圆角/柔化分割线，不改配色）；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
-        CURRENT_PROJECT_VERSION: "26"
-        MARKETING_VERSION: "4.6"
+        # 当前 4.7 (27) —— 颜色协调：统一浅色体系（底色/卡片/输入框/分割线）；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
+        CURRENT_PROJECT_VERSION: "27"
+        MARKETING_VERSION: "4.7"

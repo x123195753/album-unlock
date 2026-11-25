@@ -34,6 +34,29 @@
     '.app-card,.app-view,.content-box,.main-box{border:0 !important;',
     'outline:none !important;box-shadow:none !important;}',
 
+    /* ==== 颜色协调：统一的浅色体系（页面底 / 卡片 / 输入框 / 分割线） ==== */
+    /* 说明：不强制正文文字颜色、不动图片和品牌色；页头配色由后面的调色盘规则覆盖 */
+
+    /* 1. 页面底色统一为极浅冷灰蓝，替换各页面五花八门的底色 */
+    'html,body{background-color:#F2F5F9 !important;}',
+
+    /* 2. 卡片 / 列表 / 单元格统一白底、淡边、去杂色阴影 */
+    '.MuiPaper-root,.MuiCard-root,.MuiListItem-root,.MuiListItemButton-root,',
+    '.card,.panel,.van-cell,.van-card,.van-panel,.mint-cell,.weui-cell,.weui-form,',
+    '.uni-card,.uni-list,.uni-list-item,.list-card,.cell,.list-item,.aui-card,',
+    '.am-list-item,.app-card{background-color:#FFFFFF !important;',
+    'border-color:rgba(31,58,96,.08) !important;box-shadow:none !important;}',
+
+    /* 3. 分割线统一为极淡蓝灰 */
+    'hr,.MuiDivider-root,.van-divider{border-color:rgba(31,58,96,.07) !important;',
+    'background-color:rgba(31,58,96,.07) !important;}',
+    '.van-cell::after,.mint-cell::after,.uni-list-item::after,',
+    '.weui-cell::after{border-color:rgba(31,58,96,.07) !important;}',
+
+    /* 4. 输入框统一白底 + 淡边框 + 深色文字，保证可读性 */
+    'input,textarea,select{background-color:#FFFFFF !important;',
+    'border-color:rgba(31,58,96,.14) !important;color:#1F2D3D !important;}',
+
     /* 网页导航条：底色由调色盘控制，深色文字 */
     '.MuiAppBar-root,.MuiAppBar-positionSticky,.MuiAppBar-positionFixed,.MuiToolbar-root,',
     'header,#header,.header,.page-header,.app-header,.titlebar,.navbar,.nav-bar,',
@@ -44,7 +67,7 @@
     '.app-header *,.titlebar *,.navbar *,.nav-bar *,.top-bar *{',
     'color:#1C1C1E !important;fill:#1C1C1E !important;text-shadow:none !important;}',
 
-    /* 输入框只去外发光/描边，不改配色 */
+    /* 输入框去外发光 */
     'input,textarea,select{outline:none !important;}',
 
     /* ==== 克制精修：只动圆角与分割线，不改任何颜色 ==== */
@@ -58,12 +81,6 @@
     /* 按钮圆角化（保持原有配色） */
     'button,.MuiButton-root,.van-button,.am-button,.weui-btn,.uni-btn,a.mui-btn{',
     'border-radius:10px !important;}',
-
-    /* 分割线柔化：压到极淡的中性灰，不再是生硬黑线 */
-    'hr,.MuiDivider-root,.van-divider{border-color:rgba(0,0,0,.08) !important;',
-    'background-color:rgba(0,0,0,.08) !important;}',
-    '.van-cell::after,.mint-cell::after,.uni-list-item::after,',
-    '.weui-cell::after{border-color:rgba(0,0,0,.07) !important;}',
 
     /* 文字渲染更细腻，点击无灰色高亮块 */
     'body{-webkit-font-smoothing:antialiased;}',
