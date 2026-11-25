@@ -22,6 +22,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         # 版本号：每次构建都要递增。
-        # 当前 4.4 (24) —— 上传照片自动注入 EXIF + 分辨率适配机型（4032px 长边）；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
-        CURRENT_PROJECT_VERSION: "24"
-        MARKETING_VERSION: "4.4"
+        # 当前 4.5 (25) —— 随机位置浮动开关（5~50米随机偏移）；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
+        CURRENT_PROJECT_VERSION: "25"
+        MARKETING_VERSION: "4.5"

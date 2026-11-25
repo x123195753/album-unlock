@@ -62,17 +62,35 @@ struct LocationSettings: Codable, Equatable {
         return (p[0], p[1])
     }
 
+    /// 随机位置浮动：在给定坐标上叠加随机偏移（距离 5~50 米、方向随机，每次调用重新随机）
+    static func jittered(lat: Double, lng: Double, on: Bool) -> (lat: Double, lng: Double) {
+        guard on else { return (lat, lng) }
+        let dist = Double.random(in: 5...50)              // 米
+        let bearing = Double.random(in: 0..<(2 * .pi))    // 方向角
+        let dLat = dist * cos(bearing) / 111_320.0
+        let dLng = dist * sin(bearing) / (111_320.0 * max(0.1, cos(lat * .pi / 180.0)))
+        return (lat + dLat, lng + dLng)
+    }
+
     var preludeScript: String {
+        preludeScript(jitter: false)
+    }
+
+    /// jitter=true 时每次生成都带一个新的随机偏移（页面每次加载/刷新都会重新浮动）
+    func preludeScript(jitter: Bool) -> String {
+        let j = { (la: Double, lg: Double) in Self.jittered(lat: la, lng: lg, on: jitter) }
         switch effectiveMode {
         case "off":
             return "window.__albumFakeLocation = {enabled: false, lat: \(lat), lng: \(lng)};"
         case "device":
             if let c = LocationSettings.cachedDevice() {
-                return "window.__albumFakeLocation = {enabled: true, lat: \(c.lat), lng: \(c.lng)};"
+                let p = j(c.lat, c.lng)
+                return "window.__albumFakeLocation = {enabled: true, lat: \(p.lat), lng: \(p.lng)};"
             }
             return "window.__albumFakeLocation = {enabled: false, lat: \(lat), lng: \(lng)};"
         default:
-            return "window.__albumFakeLocation = {enabled: \(enabled), lat: \(lat), lng: \(lng)};"
+            let p = j(lat, lng)
+            return "window.__albumFakeLocation = {enabled: \(enabled), lat: \(p.lat), lng: \(p.lng)};"
         }
     }
 }
@@ -1078,6 +1096,20 @@ struct ToolMenuView: View {
                     toolRow("location.viewfinder", color: .red, title: "定位设置") {
                         onOpenLocation()
                     }
+                    // 随机位置浮动开关：每次定位在 5~50 米内随机偏移
+                    HStack(spacing: 12) {
+                        badge("shuffle", color: .mint)
+                        Text("随机位置浮动")
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { core.jitterEnabled },
+                            set: { core.setJitterEnabled($0) }
+                        ))
+                        .labelsHidden()
+                        .tint(Theme.accent)
+                    }
+                    .padding(.vertical, 2)
                 }
                 Section(header: Text("页面")) {
                     // 上传照片处理开关（EXIF + 分辨率适配机型）
@@ -1245,6 +1277,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     static let navColorKey = "albumNavColor"
     static let addressBarKey = "albumAddressBarEnabled"
     static let exifKey = "albumExifEnabled"
+    static let jitterKey = "albumJitterEnabled"
     /// 默认导航条/状态栏色：灰蓝（可在工具箱调色盘更换）
     static let defaultNavColor = "#F0F4F8"
 
@@ -1265,6 +1298,8 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var addressBarEnabled = UserDefaults.standard.object(forKey: "albumAddressBarEnabled") as? Bool ?? true
     /// 上传照片处理开关（EXIF + 分辨率适配机型）
     @Published var exifEnabled = UserDefaults.standard.object(forKey: "albumExifEnabled") as? Bool ?? true
+    /// 随机位置浮动开关（每次应用定位时叠加 5~50 米随机偏移）
+    @Published var jitterEnabled = UserDefaults.standard.object(forKey: "albumJitterEnabled") as? Bool ?? true
     /// 当前页面地址（供地址栏显示）
     @Published var currentURLString = ""
 
@@ -1295,7 +1330,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         "window.__albumBeautify = \(beautifyEnabled); " +
         "window.__albumNavColor = '\(navColor)'; " +
         "window.__albumExifEnabled = \(exifEnabled); " +
-        locationSettings.preludeScript
+        locationSettings.preludeScript(jitter: jitterEnabled)
     }
 
     override init() {
@@ -1306,7 +1341,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
             "window.__albumBeautify = \(UserDefaults.standard.object(forKey: Self.beautifyKey) as? Bool ?? true); " +
             "window.__albumNavColor = '\(UserDefaults.standard.string(forKey: Self.navColorKey) ?? Self.defaultNavColor)'; " +
             "window.__albumExifEnabled = \(UserDefaults.standard.object(forKey: Self.exifKey) as? Bool ?? true); " +
-            settings.preludeScript
+            settings.preludeScript(jitter: UserDefaults.standard.object(forKey: Self.jitterKey) as? Bool ?? true)
         // 预置脚本：先写入解锁开关与定位模拟参数（所有 frame、文档开始时）
         let prelude = WKUserScript(
             source: preludeSource,
@@ -1370,16 +1405,17 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         }
 
         // 手动/关闭模式：当前页立即生效；整页刷新让 iframe 子应用同步
+        let jp = LocationSettings.jittered(lat: s.lat, lng: s.lng, on: jitterEnabled)
         let js = """
         (function(){
-          window.__albumFakeLocation = {enabled: \(s.effectiveMode == "manual" && s.enabled), lat: \(s.lat), lng: \(s.lng)};
+          window.__albumFakeLocation = {enabled: \(s.effectiveMode == "manual" && s.enabled), lat: \(jp.lat), lng: \(jp.lng)};
           if (window.__albumUnlockInstalled) { location.reload(); }
           return 'applied';
         })()
         """
         webView.evaluateJavaScript(js) { _, _ in }
         if s.effectiveMode == "manual" && s.enabled {
-            showToast(String(format: "定位已设为 %.4f, %.4f", s.lat, s.lng), kind: .locate)
+            showToast(String(format: "定位已设为 %.4f, %.4f", jp.lat, jp.lng), kind: .locate)
         } else {
             showToast("定位模拟已关闭")
         }
@@ -1436,6 +1472,15 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         rebuildScripts()
         webView.evaluateJavaScript("window.__albumExifEnabled = \(on)") { _, _ in }
         showToast(on ? "上传处理已开启" : "上传处理已关闭", kind: on ? .success : .info)
+    }
+
+    /// 切换随机位置浮动：保存偏好并刷新页面，让新偏移立即生效
+    func setJitterEnabled(_ on: Bool) {
+        jitterEnabled = on
+        UserDefaults.standard.set(on, forKey: Self.jitterKey)
+        rebuildScripts()
+        webView.reload()
+        showToast(on ? "位置随机浮动已开启" : "位置随机浮动已关闭", kind: on ? .success : .info)
     }
 
     /// 地址栏跳转：自动补协议头
@@ -1496,7 +1541,8 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
                 self.locationSettings.lng = lng
                 self.locationSettings.save()
                 self.rebuildScripts()
-                let js = "window.__albumFakeLocation = {enabled: true, lat: \(lat), lng: \(lng)};"
+                let jp = LocationSettings.jittered(lat: lat, lng: lng, on: self.jitterEnabled)
+                let js = "window.__albumFakeLocation = {enabled: true, lat: \(jp.lat), lng: \(jp.lng)};"
                 self.webView.evaluateJavaScript(js) { _, _ in
                     if reloadAfter { self.webView.reload() }
                 }
