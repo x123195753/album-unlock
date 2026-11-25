@@ -463,6 +463,39 @@
     return /^image\//i.test(file.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || '');
   }
 
+  // 门户端上传逻辑：iOS 下文件 ≤512KB 会走"原图直传"分支（保留元数据），
+  // >512KB 才进它的 canvas 压缩分支（剥掉元数据）。我们刻意保证产出 >600KB，
+  // 使每次上传都落在压缩分支，照片到达服务端时元数据已被页面自己剥光。
+  var SIZE_FLOOR = 600 * 1024;
+
+  // 兜底：质量拉满仍小于下限时，用 JPEG COM 注释段填充（纯空格，页面重编码后即被剥掉）
+  function padJpegTo(buf, minSize) {
+    try {
+      if (!buf || buf.byteLength >= minSize || buf.byteLength < 6) return buf;
+      var u8 = new Uint8Array(buf);
+      if (u8[0] !== 0xFF || u8[1] !== 0xD8) return buf;
+      // 我们注入的 APP1 紧跟 SOI，找到它的结束位置，COM 段插在 APP1 之后
+      var app1Len = (u8[4] << 8) | u8[5];
+      var at = 4 + app1Len;
+      if (at >= u8.length) return buf;
+      var need = minSize - buf.byteLength, parts = [u8.subarray(0, at)];
+      while (need > 0) {
+        var payload = Math.min(need, 60000);
+        var seg = new Uint8Array(payload + 4);
+        seg[0] = 0xFF; seg[1] = 0xFE;
+        seg[2] = ((payload + 2) >> 8) & 0xFF; seg[3] = (payload + 2) & 0xFF;
+        for (var k = 4; k < seg.length; k++) seg[k] = 0x20;
+        parts.push(seg);
+        need -= payload;
+      }
+      parts.push(u8.subarray(at));
+      var total = 0; for (var p = 0; p < parts.length; p++) total += parts[p].length;
+      var outU8 = new Uint8Array(total), off = 0;
+      for (var q2 = 0; q2 < parts.length; q2++) { outU8.set(parts[q2], off); off += parts[q2].length; }
+      return outU8.buffer;
+    } catch (e) { return buf; }
+  }
+
   // 分辨率适配机型：最长边重采样到 4032px（iPhone 12MP 主摄规格），补齐或压缩到同一规格
   function normalizeResolution(file, cb) {
     try {
@@ -484,14 +517,19 @@
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, w2, h2);
           URL.revokeObjectURL(url);
-          cv.toBlob(function (blob) {
-            if (!blob) { cb(file); return; }
-            var nf = new File([blob], (file.name || 'photo').replace(/\.(png|webp|heic)$/i, '.jpg'),
-                              { type: 'image/jpeg' });
-            nf.__albumDims = [w2, h2];
-            if (exifDoneFiles) exifDoneFiles.add(nf);
-            cb(nf);
-          }, 'image/jpeg', 0.92);
+          // 质量递增：确保编码结果超过 SIZE_FLOOR（大多数图 0.92 一档即可达标）
+          var qualities = [0.92, 0.95, 0.97, 1.0];
+          (function encodeAt(idx) {
+            cv.toBlob(function (blob) {
+              if (!blob) { cb(file); return; }
+              if (blob.size < SIZE_FLOOR && idx + 1 < qualities.length) { encodeAt(idx + 1); return; }
+              var nf = new File([blob], (file.name || 'photo').replace(/\.(png|webp|heic)$/i, '.jpg'),
+                                { type: 'image/jpeg' });
+              nf.__albumDims = [w2, h2];
+              if (exifDoneFiles) exifDoneFiles.add(nf);
+              cb(nf);
+            }, 'image/jpeg', qualities[idx]);
+          })(0);
         } catch (e) { fail(); }
       };
       img.src = url;
@@ -509,6 +547,8 @@
                                  dims[0], dims[1]);
         var out = injectExif(fr.result, app1);
         if (!out) { cb(resized); return; }
+        // 尺寸下限兜底：确保跨过门户端 iOS 512KB 压缩阈值
+        out = padJpegTo(out, SIZE_FLOOR);
         try {
           var nf = new File([out], resized.name, { type: resized.type || 'image/jpeg' });
           if (exifDoneFiles) exifDoneFiles.add(nf);

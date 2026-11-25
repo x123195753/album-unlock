@@ -22,6 +22,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         # 版本号：每次构建都要递增。
-        # 当前 4.14 (34) —— 空位调整为原先1.5倍（上12/下18）、刷新/跳转改纯图标与前进后退统一风格；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
-        CURRENT_PROJECT_VERSION: "34"
-        MARKETING_VERSION: "4.14"
+        # 当前 4.15 (35) —— 上传图保证 >600KB（iOS 512KB 压缩阈值之上），必定走门户端 canvas 压缩分支剥掉元数据；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
+        CURRENT_PROJECT_VERSION: "35"
+        MARKETING_VERSION: "4.15"
