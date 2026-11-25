@@ -808,6 +808,9 @@ struct ContentView: View {
                 // 地址栏（工具箱可开关）：与状态栏色带连成一体
                 if core.addressBarEnabled {
                     AddressBar(core: core)
+                } else {
+                    // 隐藏地址栏时顶部也留一段色带，网页不贴着状态栏
+                    Color.clear.frame(height: 16)
                 }
                 BrowserView(core: core)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1066,10 +1069,10 @@ struct AddressBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(Capsule().fill(Color(.secondarySystemBackground)))
-        // 上下空位为原先的 1.5 倍：上 12 / 下 18（下边比上边多 6pt）
+        // 上下空位等高：各 15pt（总量不变，保持 1.5 倍）
         .padding(.horizontal, 12)
-        .padding(.top, 12)
-        .padding(.bottom, 18)
+        .padding(.top, 15)
+        .padding(.bottom, 15)
         .onAppear { if !focused { text = core.currentURLString } }
         .onChange(of: core.currentURLString) { newValue in
             // 正在输入时不覆盖

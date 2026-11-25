@@ -22,6 +22,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         # 版本号：每次构建都要递增。
-        # 当前 4.15 (35) —— 上传图保证 >600KB（iOS 512KB 压缩阈值之上），必定走门户端 canvas 压缩分支剥掉元数据；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
-        CURRENT_PROJECT_VERSION: "35"
-        MARKETING_VERSION: "4.15"
+        # 当前 4.16 (36) —— 地址栏上下空位等高（各15pt）、隐藏地址栏时顶部色带加高16pt；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
+        CURRENT_PROJECT_VERSION: "36"
+        MARKETING_VERSION: "4.16"
