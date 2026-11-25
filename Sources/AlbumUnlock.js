@@ -44,6 +44,12 @@
     '.app-header *,.titlebar *,.navbar *,.nav-bar *,.top-bar *{',
     'color:#1C1C1E !important;fill:#1C1C1E !important;text-shadow:none !important;}',
 
+    /* 导航栏压矮：MUI Toolbar 默认 56px → 40px，标题字号同步缩小 */
+    '.MuiToolbar-root{min-height:40px !important;height:40px !important;',
+    'padding-top:0 !important;padding-bottom:0 !important;}',
+    '.MuiToolbar-root .MuiTypography-h6{font-size:16px !important;}',
+    '.MuiToolbar-root .MuiIconButton-root{padding:6px !important;}',
+
     /* 输入框只去外发光/描边，不改配色 */
     'input,textarea,select{outline:none !important;}'
     ].join('');

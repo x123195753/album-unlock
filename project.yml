@@ -22,6 +22,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         # 版本号：每次构建都要递增。
-        # 当前 4.8 (28) —— 恢复 4.5 样式（撤回 4.6/4.7 的圆角精修与浅色改色，保留去边框/禁拖动）；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
-        CURRENT_PROJECT_VERSION: "28"
-        MARKETING_VERSION: "4.8"
+        # 当前 4.9 (29) —— 导航栏压矮（MUI Toolbar 56px→40px）；底部背景色保持不改；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
+        CURRENT_PROJECT_VERSION: "29"
+        MARKETING_VERSION: "4.9"
