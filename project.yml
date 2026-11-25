@@ -22,6 +22,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         # 版本号：每次构建都要递增。
-        # 当前 4.12 (32) —— 地址栏加高（内边距20/24）、前进后退走联合会话历史、刷新/跳转按钮美化、随机浮动每次加载重新随机并弹提示；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
-        CURRENT_PROJECT_VERSION: "32"
-        MARKETING_VERSION: "4.12"
+        # 当前 4.13 (33) —— 地址栏恢复原高、上下空位加倍（20/24）、前进后退不可用时置灰（含 iframe 联合历史检测）；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
+        CURRENT_PROJECT_VERSION: "33"
+        MARKETING_VERSION: "4.13"

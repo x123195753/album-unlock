@@ -1004,25 +1004,26 @@ struct AddressBar: View {
     @State private var text = ""
     @FocusState private var focused: Bool
 
-    /// 后退/前进：走联合会话历史，iframe 子应用内部的导航也能回退/前进
-    private func historyButton(_ icon: String, _ delta: Int) -> some View {
+    /// 后退/前进：走联合会话历史，iframe 子应用内部的导航也能回退；不可用时置灰
+    private func historyButton(_ icon: String, _ delta: Int, enabled: Bool) -> some View {
         Button {
             core.evaluateHistory(delta)
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundColor(Theme.accent)
+                .foregroundColor(enabled ? Theme.accent : Color(.tertiaryLabel))
                 .frame(width: 34, height: 34)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!enabled)
     }
 
     var body: some View {
         HStack(spacing: 8) {
-            // 前部：后退 / 前进（联合会话历史，不再灰置）
-            historyButton("chevron.left", -1)
-            historyButton("chevron.right", 1)
+            // 前部：后退 / 前进（联合会话历史，含 iframe 子应用内部导航）
+            historyButton("chevron.left", -1, enabled: core.canGoBack)
+            historyButton("chevron.right", 1, enabled: core.canGoForward)
 
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .medium))
@@ -1071,13 +1072,12 @@ struct AddressBar: View {
             .disabled(!hasText)
         }
         .padding(.horizontal, 12)
-        // 加高一倍：内边距上下 20/24（下边比上边多 4pt）
+        .padding(.vertical, 10)
+        .background(Capsule().fill(Color(.secondarySystemBackground)))
+        // 上下的空位加倍：上 20 / 下 24（下边比上边多 4pt）
+        .padding(.horizontal, 12)
         .padding(.top, 20)
         .padding(.bottom, 24)
-        .background(Capsule().fill(Color(.secondarySystemBackground)))
-        // 顶部贴紧状态栏色带（不留空隙），底部与网页间距 10pt
-        .padding(.horizontal, 12)
-        .padding(.bottom, 10)
         .onAppear { if !focused { text = core.currentURLString } }
         .onChange(of: core.currentURLString) { newValue in
             // 正在输入时不覆盖
@@ -1313,6 +1313,8 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     let webView: WKWebView
     @Published var canGoBack = false
     @Published var canGoForward = false
+    /// 联合会话历史长度（含 iframe 子应用的导航），用于估计后退是否可用
+    private var jointHistoryLen = 1
     @Published var statusLine = ""
     /// 统一提示气泡的唯一数据源（网页内不再自绘提示）
     @Published var toast: ToastMessage?
@@ -1410,11 +1412,15 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         sv.contentInsetAdjustmentBehavior = .never
 
         observers.append(webView.observe(\.canGoBack, options: [.new]) { [weak self] w, _ in
-            self?.canGoBack = w.canGoBack
+            self?.refreshNavAvailability()
         })
         observers.append(webView.observe(\.canGoForward, options: [.new]) { [weak self] w, _ in
-            self?.canGoForward = w.canGoForward
+            self?.refreshNavAvailability()
         })
+        // iframe 内部导航不会触发主框架 KVO，定期刷新可用状态
+        Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            self?.refreshNavAvailability()
+        }
     }
 
     func load(_ urlString: String) {
@@ -1461,6 +1467,21 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     func evaluateHistory(_ delta: Int) {
         let js = delta < 0 ? "history.back()" : "history.forward()"
         webView.evaluateJavaScript(js) { _, _ in }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            self?.refreshNavAvailability()
+        }
+    }
+
+    /// 刷新前进/后退可用状态：主框架历史之外，联合会话历史（含 iframe）有更早条目时后退也可用
+    func refreshNavAvailability() {
+        webView.evaluateJavaScript("history.length") { [weak self] res, _ in
+            guard let self = self, let n = res as? Int else { return }
+            DispatchQueue.main.async {
+                self.jointHistoryLen = n
+                self.canGoBack = self.webView.canGoBack || n > 1
+                self.canGoForward = self.webView.canGoForward
+            }
+        }
     }
 
     /// 重建预置脚本（定位设置变化后调用，保证后续导航带上新参数）
@@ -1671,7 +1692,8 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
             didAnnounceReady = true
             announceReady()
         }
-        // 页面加载完成：提取标题与主题色，标题栏自动跟随变色
+        // 页面加载完成：提取标题与主题色，标题栏自动跟随变色；同时刷新导航按钮状态
+        refreshNavAvailability()
         webView.evaluateJavaScript(Self.themeJS) { [weak self] res, _ in
             guard let self = self else { return }
             var title = ""
