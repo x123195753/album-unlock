@@ -1140,10 +1140,10 @@ struct ToolMenuView: View {
                         .tint(Theme.accent)
                     }
                     .padding(.vertical, 2)
-                    // 网页美化开关（精修 + 去边框 + 禁拖动）
+                    // 网页美化开关（去边框 + 禁拖动）
                     HStack(spacing: 12) {
                         badge("paintbrush.fill", color: .purple)
-                        Text("网页美化")
+                        Text("网页美化（去边框）")
                             .font(.subheadline.weight(.medium))
                         Spacer()
                         Toggle("", isOn: Binding(
@@ -1289,7 +1289,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var toast: ToastMessage?
     @Published var quickStats = "尚未加载页面"
     @Published var unlockEnabled = true
-    /// 网页美化（精修圆角/柔化分割线 + 去边框、禁拖动，不改动页面配色）
+    /// 网页美化（去边框、禁拖动，不改动页面配色）
     @Published var beautifyEnabled = true
     /// 状态栏条 + 网页导航条统一色（十六进制，工具箱调色盘可改）
     @Published var navColor: String = UserDefaults.standard.string(forKey: "albumNavColor")
@@ -1442,7 +1442,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         showToast(on ? "相册解锁已开启" : "相册解锁已关闭", kind: on ? .success : .info)
     }
 
-    /// 切换网页美化：保存、重建注入脚本并刷新页面立即生效
+    /// 切换网页美化（去边框）：保存、重建注入脚本并刷新页面立即生效
     func setBeautifyEnabled(_ on: Bool) {
         beautifyEnabled = on
         UserDefaults.standard.set(on, forKey: Self.beautifyKey)
