@@ -1048,10 +1048,10 @@ struct AddressBar: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
         .background(Capsule().fill(Color(.secondarySystemBackground)))
+        // 顶部贴紧状态栏色带（不留空隙），底部与网页间距 10pt，两侧视觉一致
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.bottom, 10)
         .onAppear { if !focused { text = core.currentURLString } }
         .onChange(of: core.currentURLString) { newValue in
             // 正在输入时不覆盖
@@ -1520,6 +1520,8 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     // MARK: 手机真实定位
 
     private var lastDeviceFetchAt = Date.distantPast
+    /// 上次弹过提示的注入坐标（定位真正变化才提示，避免重复打扰）
+    private var lastLocToastCoord: (lat: Double, lng: Double)?
 
     /// 手机定位模式下：取当前位置（WGS-84 → GCJ-02），写入缓存并同步到当前页面。
     /// 每次页面导航时自动调用（30 秒节流），移动中也能拿到最新位置。
@@ -1552,7 +1554,13 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
                 let coord = String(format: "%.4f, %.4f", lat, lng)
                 self.statusLine = "手机定位 " + coord
                 self.quickStats = "手机定位 " + coord
-                if announce { self.showToast("定位已更新 " + coord, kind: .locate) }
+                // 定位变化（含随机浮动产生的新坐标）即弹气泡提示
+                let prev = self.lastLocToastCoord
+                let moved = prev == nil
+                    || abs(jp.lat - prev!.lat) > 1e-5
+                    || abs(jp.lng - prev!.lng) > 1e-5
+                self.lastLocToastCoord = (jp.lat, jp.lng)
+                if announce || moved { self.showToast("定位已更新 " + coord, kind: .locate) }
             }
         }
     }
