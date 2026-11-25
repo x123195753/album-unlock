@@ -1037,7 +1037,7 @@ struct AddressBar: View {
                 .focused($focused)
                 .onSubmit(go)
 
-            // 后部：刷新（主题色浅底圆钮）/ 跳转（有内容时主题渐变实心圆钮）
+            // 后部：刷新 / 跳转（与前进后退统一的纯图标风格）
             Button {
                 focused = false
                 core.webView.reload()
@@ -1046,8 +1046,7 @@ struct AddressBar: View {
                     .font(.system(size: 15, weight: .medium))
                     .foregroundColor(Theme.accent)
                     .frame(width: 34, height: 34)
-                    .background(Circle().fill(Theme.accent.opacity(0.12)))
-                    .contentShape(Circle())
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -1056,17 +1055,10 @@ struct AddressBar: View {
                 go()
             } label: {
                 Image(systemName: "paperplane.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(hasText ? .white : Color(.tertiaryLabel))
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(hasText ? Theme.accent : Color(.tertiaryLabel))
                     .frame(width: 34, height: 34)
-                    .background(
-                        Circle().fill(hasText
-                            ? AnyShapeStyle(LinearGradient(
-                                colors: [Theme.accent, Theme.accent.opacity(0.72)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing))
-                            : AnyShapeStyle(Color(.quaternarySystemFill)))
-                    )
-                    .contentShape(Circle())
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(!hasText)
@@ -1074,10 +1066,10 @@ struct AddressBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(Capsule().fill(Color(.secondarySystemBackground)))
-        // 上下的空位加倍：上 20 / 下 24（下边比上边多 4pt）
+        // 上下空位为原先的 1.5 倍：上 12 / 下 18（下边比上边多 6pt）
         .padding(.horizontal, 12)
-        .padding(.top, 20)
-        .padding(.bottom, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 18)
         .onAppear { if !focused { text = core.currentURLString } }
         .onChange(of: core.currentURLString) { newValue in
             // 正在输入时不覆盖
