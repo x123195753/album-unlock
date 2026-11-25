@@ -72,26 +72,27 @@ struct LocationSettings: Codable, Equatable {
         return (lat + dLat, lng + dLng)
     }
 
-    var preludeScript: String {
-        preludeScript(jitter: false)
-    }
-
-    /// jitter=true 时每次生成都带一个新的随机偏移（页面每次加载/刷新都会重新浮动）
-    func preludeScript(jitter: Bool) -> String {
-        let j = { (la: Double, lg: Double) in Self.jittered(lat: la, lng: lg, on: jitter) }
+    /// 计算当前要预置进页面的模拟坐标（含随机浮动）
+    func fakeLocation(jitter: Bool) -> (enabled: Bool, lat: Double, lng: Double) {
         switch effectiveMode {
         case "off":
-            return "window.__albumFakeLocation = {enabled: false, lat: \(lat), lng: \(lng)};"
+            return (false, lat, lng)
         case "device":
-            if let c = LocationSettings.cachedDevice() {
-                let p = j(c.lat, c.lng)
-                return "window.__albumFakeLocation = {enabled: true, lat: \(p.lat), lng: \(p.lng)};"
+            if let c = Self.cachedDevice() {
+                let p = Self.jittered(lat: c.lat, lng: c.lng, on: jitter)
+                return (true, p.lat, p.lng)
             }
-            return "window.__albumFakeLocation = {enabled: false, lat: \(lat), lng: \(lng)};"
+            return (false, lat, lng)
         default:
-            let p = j(lat, lng)
-            return "window.__albumFakeLocation = {enabled: \(enabled), lat: \(p.lat), lng: \(p.lng)};"
+            let p = Self.jittered(lat: lat, lng: lng, on: jitter)
+            return (enabled, p.lat, p.lng)
         }
+    }
+
+    /// jitter=true 时每次生成都带一个新的随机偏移（每次重建脚本/加载页面都会重新浮动）
+    func preludeScript(jitter: Bool) -> String {
+        let f = fakeLocation(jitter: jitter)
+        return "window.__albumFakeLocation = {enabled: \(f.enabled), lat: \(f.lat), lng: \(f.lng)};"
     }
 }
 
@@ -1003,28 +1004,25 @@ struct AddressBar: View {
     @State private var text = ""
     @FocusState private var focused: Bool
 
-    /// 四个导航按钮统一风格：同尺寸、同字重，可用时主题蓝、不可用置灰
-    private func navButton(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+    /// 后退/前进：走联合会话历史，iframe 子应用内部的导航也能回退/前进
+    private func historyButton(_ icon: String, _ delta: Int) -> some View {
+        Button {
+            core.evaluateHistory(delta)
+        } label: {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundColor(enabled ? Theme.accent : Color(.tertiaryLabel))
+                .foregroundColor(Theme.accent)
                 .frame(width: 34, height: 34)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!enabled)
     }
 
     var body: some View {
         HStack(spacing: 8) {
-            // 前部：后退 / 前进
-            navButton("chevron.left", enabled: core.canGoBack) {
-                core.webView.goBack()
-            }
-            navButton("chevron.right", enabled: core.canGoForward) {
-                core.webView.goForward()
-            }
+            // 前部：后退 / 前进（联合会话历史，不再灰置）
+            historyButton("chevron.left", -1)
+            historyButton("chevron.right", 1)
 
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .medium))
@@ -1038,18 +1036,46 @@ struct AddressBar: View {
                 .focused($focused)
                 .onSubmit(go)
 
-            // 后部：刷新 / 跳转
-            navButton("arrow.clockwise", enabled: true) {
+            // 后部：刷新（主题色浅底圆钮）/ 跳转（有内容时主题渐变实心圆钮）
+            Button {
                 focused = false
                 core.webView.reload()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(Theme.accent)
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(Theme.accent.opacity(0.12)))
+                    .contentShape(Circle())
             }
-            navButton("paperplane.fill", enabled: !text.isEmpty) {
+            .buttonStyle(.plain)
+
+            let hasText = !text.isEmpty
+            Button {
                 go()
+            } label: {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(hasText ? .white : Color(.tertiaryLabel))
+                    .frame(width: 34, height: 34)
+                    .background(
+                        Circle().fill(hasText
+                            ? AnyShapeStyle(LinearGradient(
+                                colors: [Theme.accent, Theme.accent.opacity(0.72)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing))
+                            : AnyShapeStyle(Color(.quaternarySystemFill)))
+                    )
+                    .contentShape(Circle())
             }
+            .buttonStyle(.plain)
+            .disabled(!hasText)
         }
         .padding(.horizontal, 12)
+        // 加高一倍：内边距上下 20/24（下边比上边多 4pt）
+        .padding(.top, 20)
+        .padding(.bottom, 24)
         .background(Capsule().fill(Color(.secondarySystemBackground)))
-        // 顶部贴紧状态栏色带（不留空隙），底部与网页间距 10pt，两侧视觉一致
+        // 顶部贴紧状态栏色带（不留空隙），底部与网页间距 10pt
         .padding(.horizontal, 12)
         .padding(.bottom, 10)
         .onAppear { if !focused { text = core.currentURLString } }
@@ -1326,6 +1352,8 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
 
     private var observers: [NSKeyValueObservation] = []
     private var locationSettings: LocationSettings = .load()
+    /// 当前预置脚本里的模拟坐标（每次重建脚本时刷新）
+    private var injectedFake: (enabled: Bool, lat: Double, lng: Double)?
 
     /// 预置脚本：解锁开关 + 网页美化开关 + 导航条颜色 + EXIF 开关 + 定位模拟参数
     private var combinedPrelude: String {
@@ -1366,6 +1394,7 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
         webView = WKWebView(frame: .zero, configuration: cfg)
 
         super.init()
+        injectedFake = locationSettings.fakeLocation(jitter: jitterEnabled)
         unlockEnabled = UserDefaults.standard.object(forKey: Self.unlockKey) as? Bool ?? true
         beautifyEnabled = UserDefaults.standard.object(forKey: Self.beautifyKey) as? Bool ?? true
         webView.allowsBackForwardNavigationGestures = true
@@ -1407,25 +1436,36 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
             return
         }
 
-        // 手动/关闭模式：当前页立即生效；整页刷新让 iframe 子应用同步
-        let jp = LocationSettings.jittered(lat: s.lat, lng: s.lng, on: jitterEnabled)
-        let js = """
-        (function(){
-          window.__albumFakeLocation = {enabled: \(s.effectiveMode == "manual" && s.enabled), lat: \(jp.lat), lng: \(jp.lng)};
-          if (window.__albumUnlockInstalled) { location.reload(); }
-          return 'applied';
-        })()
-        """
-        webView.evaluateJavaScript(js) { _, _ in }
-        if s.effectiveMode == "manual" && s.enabled {
-            showToast(String(format: "定位已设为 %.4f, %.4f", jp.lat, jp.lng), kind: .locate)
+        // 手动/关闭模式：当前页立即生效；整页刷新让 iframe 子应用同步。
+        // rebuildScripts() 已把（含随机浮动的）最终坐标存进 injectedFake，这里直接用同一坐标
+        if let f = injectedFake {
+            let js = """
+            (function(){
+              window.__albumFakeLocation = {enabled: \(f.enabled), lat: \(f.lat), lng: \(f.lng)};
+              if (window.__albumUnlockInstalled) { location.reload(); }
+              return 'applied';
+            })()
+            """
+            webView.evaluateJavaScript(js) { _, _ in }
+            lastLocToastCoord = (f.lat, f.lng)
+        }
+        if s.effectiveMode == "manual" && s.enabled, let f = injectedFake {
+            showToast(String(format: "定位已设为 %.4f, %.4f", f.lat, f.lng), kind: .locate)
         } else {
             showToast("定位模拟已关闭")
         }
     }
 
+    /// 地址栏前进/后退：走联合会话历史（history.back/forward），
+    /// 主框架没动过的门户场景下，iframe 子应用内部的历史也能回退/前进
+    func evaluateHistory(_ delta: Int) {
+        let js = delta < 0 ? "history.back()" : "history.forward()"
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
     /// 重建预置脚本（定位设置变化后调用，保证后续导航带上新参数）
     private func rebuildScripts() {
+        injectedFake = locationSettings.fakeLocation(jitter: jitterEnabled)
         let controller = webView.configuration.userContentController
         controller.removeAllUserScripts()
         controller.addUserScript(WKUserScript(
@@ -1546,20 +1586,20 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
                 self.locationSettings.lng = lng
                 self.locationSettings.save()
                 self.rebuildScripts()
-                let jp = LocationSettings.jittered(lat: lat, lng: lng, on: self.jitterEnabled)
-                let js = "window.__albumFakeLocation = {enabled: true, lat: \(jp.lat), lng: \(jp.lng)};"
+                guard let f = self.injectedFake else { return }
+                let js = "window.__albumFakeLocation = {enabled: \(f.enabled), lat: \(f.lat), lng: \(f.lng)};"
                 self.webView.evaluateJavaScript(js) { _, _ in
                     if reloadAfter { self.webView.reload() }
                 }
-                let coord = String(format: "%.4f, %.4f", lat, lng)
+                let coord = String(format: "%.4f, %.4f", f.lat, f.lng)
                 self.statusLine = "手机定位 " + coord
                 self.quickStats = "手机定位 " + coord
                 // 定位变化（含随机浮动产生的新坐标）即弹气泡提示
                 let prev = self.lastLocToastCoord
                 let moved = prev == nil
-                    || abs(jp.lat - prev!.lat) > 1e-5
-                    || abs(jp.lng - prev!.lng) > 1e-5
-                self.lastLocToastCoord = (jp.lat, jp.lng)
+                    || abs(f.lat - prev!.lat) > 1e-5
+                    || abs(f.lng - prev!.lng) > 1e-5
+                self.lastLocToastCoord = (f.lat, f.lng)
                 if announce || moved { self.showToast("定位已更新 " + coord, kind: .locate) }
             }
         }
@@ -1652,9 +1692,27 @@ final class WebCore: NSObject, ObservableObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         // 每次页面开始加载时刷新手机定位（节流），确保坐标随人移动更新
         refreshDeviceLocation()
+        // 模拟定位生效时：本次加载的坐标有变化就提示，并为下次加载重新随机浮动
+        if locationSettings.effectiveMode != "off" {
+            announceInjectedLocation()
+            rebuildScripts()
+        }
         // 同步当前地址给地址栏
         if let s = webView.url?.absoluteString {
             DispatchQueue.main.async { self.currentURLString = s }
+        }
+    }
+
+    /// 当前注入坐标与上次提示的不同（≥约1米）则弹气泡；随机浮动开启时每次页面加载都会提示新坐标
+    private func announceInjectedLocation() {
+        guard let f = injectedFake, f.enabled else { return }
+        let prev = lastLocToastCoord
+        let moved = prev == nil
+            || abs(f.lat - prev!.lat) > 1e-5
+            || abs(f.lng - prev!.lng) > 1e-5
+        lastLocToastCoord = (f.lat, f.lng)
+        if moved {
+            showToast(String(format: "定位已更新 %.4f, %.4f", f.lat, f.lng), kind: .locate)
         }
     }
 
