@@ -22,6 +22,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         # 版本号：每次构建都要递增。
-        # 当前 4.18 (38) —— 地址栏空位上10/下30；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
-        CURRENT_PROJECT_VERSION: "38"
-        MARKETING_VERSION: "4.18"
+        # 当前 4.19 (39) —— 地址栏空位上10/下24；以后每改一版 MARKETING_VERSION +0.1、CURRENT_PROJECT_VERSION +1
+        CURRENT_PROJECT_VERSION: "39"
+        MARKETING_VERSION: "4.19"
